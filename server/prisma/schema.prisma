@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String             @id @default(uuid())
+  email            String             @unique
+  passwordHash     String?
+  firstName        String?
+  lastName         String?
+  avatarUrl        String?
+  googleId         String?            @unique
+  googleEmail      String?
+  lastLoginAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  refreshTokens    RefreshToken[]
+  lists            UserList[]
+  favorites        Favorite[]
+  savedComparisons SavedComparison[]
+  priceAlerts      PriceAlert[]
+  preferences      UserPreference?
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  userId      String
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  createdByIp String?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Week 2: Price Comparison Models
+
+model Category {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  slug           String          @unique
+  icon           String?
+  description    String?
+  shoppingTips   String?
+  displayOrder   Int             @default(0)
+  enabled        Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  products       Product[]
+  advertisements Advertisement[]
+
+  @@index([slug])
+  @@index([displayOrder])
+}
+
+model Store {
+  id            String          @id @default(uuid())
+  name          String          @unique
+  slug          String          @unique
+  logo          String?
+  websiteUrl    String?
+  apiEndpoint   String?
+  apiKey        String?
+  enabled       Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  productPrices ProductPrice[]
+  locations     StoreLocation[]
+
+  @@index([slug])
+  @@index([enabled])
+}
+
+model Product {
+  id               String             @id @default(uuid())
+  name             String
+  description      String?
+  images           String[]
+  barcode          String?            @unique
+  brand            String?
+  categoryId       String
+  subcategory      String?
+  externalIds      Json?
+  searchCount      Int                @default(0)
+  viewCount        Int                @default(0)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  category         Category           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  prices           ProductPrice[]
+  priceHistory     PriceHistory[]
+  listItems        ListItem[]
+  favorites        Favorite[]
+  savedComparisons SavedComparison[]
+  priceAlerts      PriceAlert[]
+
+  @@index([categoryId])
+  @@index([barcode])
+  @@index([searchCount])
+  @@index([name])
+  @@index([subcategory])
+}
+
+model ProductPrice {
+  id           String   @id @default(uuid())
+  productId    String
+  storeId      String
+  price        Decimal  @db.Decimal(10, 2)
+  shippingCost Decimal  @db.Decimal(10, 2) @default(0)
+  currency     String   @default("USD")
+  inStock      Boolean  @default(true)
+  productUrl   String?
+  lastUpdated  DateTime @default(now())
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, storeId])
+  @@index([productId])
+  @@index([storeId])
+  @@index([price])
+}
+
+model PriceHistory {
+  id         String   @id @default(uuid())
+  productId  String
+  storeId    String
+  price      Decimal  @db.Decimal(10, 2)
+  recordedAt DateTime @default(now())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, recordedAt])
+  @@index([storeId, recordedAt])
+}
+
+// Week 3: User Features Models
+
+model UserList {
+  id          String     @id @default(uuid())
+  userId      String
+  name        String
+  description String?
+  isDefault   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       ListItem[]
+
+  @@index([userId])
+}
+
+model ListItem {
+  id          String   @id @default(uuid())
+  listId      String
+  productId   String
+  quantity    Int      @default(1)
+  notes       String?
+  isPurchased Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  list        UserList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, productId])
+  @@index([listId])
+  @@index([productId])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model SavedComparison {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  notes     String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+}
+
+// Week 4: Analytics & Insights Models
+
+model PriceAlert {
+  id          String   @id @default(uuid())
+  userId      String
+  productId   String
+  targetPrice Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  notified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+// Week 5: Advanced Features Models
+
+model StoreLocation {
+  id        String   @id @default(uuid())
+  storeId   String
+  address   String
+  city      String
+  state     String
+  zipCode   String
+  latitude  Float?
+  longitude Float?
+  phone     String?
+  hours     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([zipCode])
+  @@index([city, state])
+}
+
+model Advertisement {
+  id           String   @id @default(uuid())
+  categoryId   String?
+  title        String
+  description  String
+  imageUrl     String?
+  ctaText      String   @default("Learn More")
+  ctaUrl       String
+  sponsorName  String
+  isActive     Boolean  @default(true)
+  displayOrder Int      @default(0)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  startDate    DateTime @default(now())
+  endDate      DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model UserPreference {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  defaultStores     String[] // Array of store IDs
+  searchRadius      Int      @default(10) // miles
+  preferredZipCode  String?
+  priceAlertEmail   Boolean  @default(true)
+  trendingEmail     Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+

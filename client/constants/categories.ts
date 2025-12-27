@@ -1,0 +1,463 @@
+/**
+ * Category Data Constants
+ * All 39 categories from PriceLens Figma
+ */
+
+import { Category } from '@/types';
+
+export const CATEGORIES: Record<string, Category> = {
+  allretailers: {
+    id: 'allretailers',
+    name: 'All Retailers',
+    slug: 'all-retailers',
+    description: 'Search across Amazon, Walmart, Target, Best Buy, and more',
+    icon: 'storefront',
+    iconColor: '#10B981',
+    type: 'product',
+    stores: [],
+    isNew: true,
+  },
+  
+  groceries: {
+    id: 'groceries',
+    name: 'Groceries',
+    slug: 'groceries',
+    description: 'Compare grocery prices across 11 major stores',
+    icon: 'cart',
+    iconColor: '#10B981',
+    type: 'product',
+    stores: ['walmart', 'target', 'wholefoods', 'kroger', 'safeway', 'kingsoopers', 'amazonfresh', 'costco', 'foodlion', 'traderjoes', 'aldi'],
+    subcategories: [
+      { id: 'produce', name: 'Produce' },
+      { id: 'dairy', name: 'Dairy' },
+      { id: 'meat', name: 'Meat & Seafood' },
+      { id: 'bakery', name: 'Bakery' },
+      { id: 'pantry', name: 'Pantry' },
+    ],
+  },
+  
+  electronics: {
+    id: 'electronics',
+    name: 'Electronics',
+    slug: 'electronics',
+    description: 'Find the best deals on tech and gadgets',
+    icon: 'laptop',
+    iconColor: '#3B82F6',
+    type: 'product',
+    stores: ['amazon', 'bestbuy', 'walmart', 'target', 'newegg', 'bhphoto', 'costco', 'microcenter', 'samsclub'],
+    subcategories: [
+      { id: 'tvs', name: 'TVs', count: 31 },
+      { id: 'headphones', name: 'Headphones', count: 12 },
+      { id: 'gaming', name: 'Gaming', count: 30 },
+      { id: 'tablets', name: 'Tablets', count: 17 },
+      { id: 'accessories', name: 'Accessories', count: 6 },
+    ],
+  },
+  
+  kitchen: {
+    id: 'kitchen',
+    name: 'Kitchen & Appliances',
+    slug: 'kitchen',
+    description: 'Compare kitchen appliances and cookware prices',
+    icon: 'restaurant',
+    iconColor: '#F97316',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target', 'costco'],
+  },
+  
+  homeaccessories: {
+    id: 'homeaccessories',
+    name: 'Home Accessories',
+    slug: 'home-accessories',
+    description: 'Find the best home accessories and decor',
+    icon: 'home',
+    iconColor: '#06B6D4',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target'],
+  },
+  
+  clothing: {
+    id: 'clothing',
+    name: 'Clothing',
+    slug: 'clothing',
+    description: 'Compare fashion prices across retailers',
+    icon: 'shirt',
+    iconColor: '#8B5CF6',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target'],
+  },
+  
+  footwear: {
+    id: 'footwear',
+    name: 'Footwear',
+    slug: 'footwear',
+    description: 'Compare shoe prices from top brands',
+    icon: 'shoe',
+    iconColor: '#3B82F6',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target'],
+  },
+  
+  books: {
+    id: 'books',
+    name: 'Books',
+    slug: 'books',
+    description: 'Find the best book prices online',
+    icon: 'book',
+    iconColor: '#F97316',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target'],
+  },
+  
+  household: {
+    id: 'household',
+    name: 'Household Items',
+    slug: 'household',
+    description: 'Compare prices on home essentials',
+    icon: 'home-outline',
+    iconColor: '#06B6D4',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target', 'costco'],
+  },
+  
+  medicine: {
+    id: 'medicine',
+    name: 'Medicine & Health',
+    slug: 'medicine',
+    description: 'Find the best prices on medications',
+    icon: 'medical',
+    iconColor: '#EF4444',
+    type: 'product',
+    stores: [],
+  },
+  
+  rentalcars: {
+    id: 'rentalcars',
+    name: 'Rental Cars',
+    slug: 'rental-cars',
+    description: 'Compare rental car prices across companies',
+    icon: 'car',
+    iconColor: '#8B5CF6',
+    type: 'service',
+    stores: [],
+  },
+  
+  hotels: {
+    id: 'hotels',
+    name: 'Hotels',
+    slug: 'hotels',
+    description: 'Find the best hotel deals',
+    icon: 'business',
+    iconColor: '#EC4899',
+    type: 'service',
+    stores: [],
+  },
+  
+  airfare: {
+    id: 'airfare',
+    name: 'Airfare',
+    slug: 'airfare',
+    description: 'Compare flight prices across 10 booking sites',
+    icon: 'airplane',
+    iconColor: '#06B6D4',
+    type: 'service',
+    stores: [],
+  },
+  
+  tires: {
+    id: 'tires',
+    name: 'Tires',
+    slug: 'tires',
+    description: 'Compare tire prices and installation services',
+    icon: 'disc',
+    iconColor: '#6B7280',
+    type: 'service',
+    stores: [],
+  },
+  
+  haircuts: {
+    id: 'haircuts',
+    name: 'Haircuts & Salons',
+    slug: 'haircuts',
+    description: 'Find local salon and barber prices',
+    icon: 'cut',
+    iconColor: '#FBBF24',
+    type: 'service',
+    stores: [],
+  },
+  
+  oilchanges: {
+    id: 'oilchanges',
+    name: 'Oil Changes',
+    slug: 'oil-changes',
+    description: 'Compare oil change prices and services',
+    icon: 'build',
+    iconColor: '#F97316',
+    type: 'service',
+    stores: [],
+  },
+  
+  carwashes: {
+    id: 'carwashes',
+    name: 'Car Washes',
+    slug: 'car-washes',
+    description: 'Find the best car wash deals near you',
+    icon: 'water',
+    iconColor: '#06B6D4',
+    type: 'service',
+    stores: [],
+  },
+  
+  videogames: {
+    id: 'videogames',
+    name: 'Video Games',
+    slug: 'video-games',
+    description: 'Compare game prices across 14 platforms',
+    icon: 'game-controller',
+    iconColor: '#8B5CF6',
+    type: 'product',
+    stores: ['amazon', 'walmart', 'target', 'bestbuy'],
+  },
+  
+  gasstations: {
+    id: 'gasstations',
+    name: 'Gas Stations',
+    slug: 'gas-stations',
+    description: 'Find the cheapest gas near you',
+    icon: 'gas-station',
+    iconColor: '#FBBF24',
+    type: 'service',
+    stores: [],
+  },
+  
+  carinsurance: {
+    id: 'carinsurance',
+    name: 'Car Insurance',
+    slug: 'car-insurance',
+    description: 'Compare car insurance rates and coverage',
+    icon: 'shield-checkmark',
+    iconColor: '#EF4444',
+    type: 'service',
+    stores: [],
+  },
+  
+  rentersinsurance: {
+    id: 'rentersinsurance',
+    name: 'Renters Insurance',
+    slug: 'renters-insurance',
+    description: 'Find the best renters insurance deals',
+    icon: 'shield',
+    iconColor: '#3B82F6',
+    type: 'service',
+    stores: [],
+  },
+  
+  apartments: {
+    id: 'apartments',
+    name: 'Apartments',
+    slug: 'apartments',
+    description: 'Compare apartment rental prices and amenities',
+    icon: 'business-outline',
+    iconColor: '#8B5CF6',
+    type: 'service',
+    stores: [],
+  },
+  
+  services: {
+    id: 'services',
+    name: 'Services',
+    slug: 'services',
+    description: 'Compare local service provider prices',
+    icon: 'construct',
+    iconColor: '#EC4899',
+    type: 'service',
+    stores: [],
+  },
+  
+  fooddelivery: {
+    id: 'fooddelivery',
+    name: 'Food Delivery',
+    slug: 'food-delivery',
+    description: 'Compare delivery prices on Uber Eats, DoorDash & more',
+    icon: 'fast-food',
+    iconColor: '#F97316',
+    type: 'service',
+    stores: [],
+  },
+  
+  massageparlors: {
+    id: 'massageparlors',
+    name: 'Massage Parlors',
+    slug: 'massage',
+    description: 'Compare massage services and prices near you',
+    icon: 'hand-left',
+    iconColor: '#EC4899',
+    type: 'service',
+    stores: [],
+  },
+  
+  nailsalons: {
+    id: 'nailsalons',
+    name: 'Nail Salons',
+    slug: 'nail-salons',
+    description: 'Find the best nail salon deals in your area',
+    icon: 'hand-right',
+    iconColor: '#EC4899',
+    type: 'service',
+    stores: [],
+  },
+  
+  beautyproducts: {
+    id: 'beautyproducts',
+    name: 'Beauty Products',
+    slug: 'beauty',
+    description: 'Compare makeup & skincare from Sephora, Ulta & more',
+    icon: 'sparkles',
+    iconColor: '#EC4899',
+    type: 'product',
+    stores: [],
+  },
+  
+  gymmemberships: {
+    id: 'gymmemberships',
+    name: 'Gym Memberships',
+    slug: 'gym',
+    description: 'Find the best gym membership prices near you',
+    icon: 'fitness',
+    iconColor: '#06B6D4',
+    type: 'service',
+    stores: [],
+  },
+  
+  sportsequipment: {
+    id: 'sportsequipment',
+    name: 'Sports Equipment',
+    slug: 'sports',
+    description: 'Compare sports and fitness equipment prices',
+    icon: 'basketball',
+    iconColor: '#10B981',
+    type: 'product',
+    stores: [],
+  },
+  
+  officesupplies: {
+    id: 'officesupplies',
+    name: 'Office Supplies',
+    slug: 'office',
+    description: 'Find the best office supply deals and stationery',
+    icon: 'briefcase',
+    iconColor: '#6B7280',
+    type: 'product',
+    stores: [],
+  },
+  
+  mattresses: {
+    id: 'mattresses',
+    name: 'Mattresses',
+    slug: 'mattresses',
+    description: 'Compare mattress prices and brands',
+    icon: 'bed',
+    iconColor: '#8B5CF6',
+    type: 'product',
+    stores: [],
+  },
+  
+  furniture: {
+    id: 'furniture',
+    name: 'Furniture',
+    slug: 'furniture',
+    description: 'Compare furniture prices across retailers',
+    icon: 'bed-outline',
+    iconColor: '#F97316',
+    type: 'product',
+    stores: [],
+  },
+  
+  homedecor: {
+    id: 'homedecor',
+    name: 'Home Decor',
+    slug: 'home-decor',
+    description: 'Find the best home decor and accent pieces',
+    icon: 'color-palette',
+    iconColor: '#06B6D4',
+    type: 'product',
+    stores: [],
+  },
+  
+  movingcompanies: {
+    id: 'movingcompanies',
+    name: 'Moving Companies',
+    slug: 'moving',
+    description: 'Compare moving company prices and services',
+    icon: 'bus',
+    iconColor: '#F97316',
+    type: 'service',
+    stores: [],
+  },
+  
+  storageunits: {
+    id: 'storageunits',
+    name: 'Storage Units',
+    slug: 'storage',
+    description: 'Find the best storage unit prices and sizes',
+    icon: 'cube',
+    iconColor: '#6B7280',
+    type: 'service',
+    stores: [],
+  },
+  
+  spaservices: {
+    id: 'spaservices',
+    name: 'Spa Services',
+    slug: 'spa',
+    description: 'Compare spa services and treatment prices',
+    icon: 'flower',
+    iconColor: '#EC4899',
+    type: 'service',
+    stores: [],
+  },
+  
+  toolshardware: {
+    id: 'toolshardware',
+    name: 'Tools & Hardware',
+    slug: 'tools',
+    description: 'Compare tool and hardware store prices',
+    icon: 'hammer',
+    iconColor: '#6B7280',
+    type: 'product',
+    stores: [],
+  },
+  
+  mealkits: {
+    id: 'mealkits',
+    name: 'Meal Kits',
+    slug: 'meal-kits',
+    description: 'Compare meal kit delivery service prices',
+    icon: 'restaurant-outline',
+    iconColor: '#10B981',
+    type: 'service',
+    stores: [],
+  },
+  
+  petsupplies: {
+    id: 'petsupplies',
+    name: 'Pet Supplies',
+    slug: 'pet-supplies',
+    description: 'Find the best pet supply deals and food',
+    icon: 'paw',
+    iconColor: '#F97316',
+    type: 'product',
+    stores: [],
+  },
+};
+
+export const CATEGORY_LIST = Object.values(CATEGORIES);
+
+export const TRENDING_SEARCHES = [
+  'iPhone 15',
+  'AirPods Pro',
+  'Nike Running Shoes',
+  'LEGO Sets',
+  'Instant Pot',
+  'Organic Milk',
+];
