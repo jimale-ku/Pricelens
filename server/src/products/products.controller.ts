@@ -44,6 +44,18 @@ export class ProductsController {
     return this.productsService.findAll(categoryId);
   }
 
+  @Get('popular')
+  @ApiOperation({ summary: 'Get popular/trending products' })
+  @ApiQuery({ name: 'categorySlug', required: false, description: 'Filter by category slug' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of products to return (default: 6)' })
+  @ApiResponse({ status: 200, description: 'Returns popular products based on search/view count' })
+  getPopular(
+    @Query('categorySlug') categorySlug?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.productsService.getPopular(categorySlug, limit ? parseInt(limit) : 6);
+  }
+
   @Get('search')
   @ApiOperation({ summary: 'Search products by name, brand, description, or barcode' })
   @ApiQuery({ name: 'q', required: true, description: 'Search query' })
@@ -77,6 +89,69 @@ export class ProductsController {
   })
   searchStores(@Query('q') query: string) {
     return this.productsService.searchExternalStores(query);
+  }
+
+  @Get('compare/multi-store')
+  @ApiOperation({ 
+    summary: 'Compare product prices across all stores',
+    description: 'Search by product name or barcode (GTIN) and get prices from multiple stores. Perfect for price comparison cards.'
+  })
+  @ApiQuery({ 
+    name: 'q', 
+    required: true, 
+    description: 'Product name or barcode (8-14 digits)',
+    example: 'Organic Bananas' 
+  })
+  @ApiQuery({ 
+    name: 'searchType', 
+    required: false, 
+    enum: ['term', 'gtin', 'auto'],
+    description: 'Search type: term (keyword), gtin (barcode), or auto (detect automatically)',
+    example: 'auto'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Returns product with prices from all stores, sorted by price',
+    schema: {
+      example: {
+        product: {
+          name: 'Organic Bananas',
+          image: 'https://...',
+          barcode: '4011',
+          category: 'Groceries'
+        },
+        prices: [
+          {
+            rank: 1,
+            store: { name: 'Costco', logo: 'https://...' },
+            price: 0.49,
+            totalPrice: 0.49,
+            savings: 0,
+            isBestPrice: true
+          },
+          {
+            rank: 2,
+            store: { name: 'Aldi', logo: 'https://...' },
+            price: 0.53,
+            totalPrice: 0.53,
+            savings: 0.04,
+            isBestPrice: false
+          }
+        ],
+        metadata: {
+          totalStores: 11,
+          lowestPrice: 0.49,
+          highestPrice: 0.79,
+          maxSavings: 0.30
+        }
+      }
+    }
+  })
+  compareMultiStore(
+    @Query('q') query: string,
+    @Query('searchType') searchType?: 'term' | 'gtin' | 'auto',
+  ) {
+    return this.productsService.compareProductAcrossStores(query, searchType || 'auto');
   }
 
   @Get(':id')

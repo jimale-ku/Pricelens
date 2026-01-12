@@ -61,10 +61,12 @@ async function bootstrap() {
     console.log('6️⃣ Filters set, preparing to listen...');
 
     const port = process.env.PORT ?? 3000;
-    console.log(`7️⃣ Attempting to listen on port ${port}...`);
-    await app.listen(port);
-    console.log(`🚀 Nest application successfully started on port ${port}`);
+    const host = '0.0.0.0'; // Listen on all network interfaces (not just localhost)
+    console.log(`7️⃣ Attempting to listen on ${host}:${port}...`);
+    await app.listen(port, host);
+    console.log(`🚀 Nest application successfully started on ${host}:${port}`);
     console.log(`📚 Swagger documentation available at http://localhost:${port}/api`);
+    console.log(`🌐 API accessible at http://192.168.201.104:${port}`);
   } catch (error) {
     console.error('❌ Error starting Nest application:', error);
     process.exit(1);

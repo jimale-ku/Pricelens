@@ -1,11 +1,27 @@
 /**
  * Tab Layout with Bottom Navigation
+ * Bottom tabs sync with header pills:
+ * - Home → Homepage (index)
+ * - Search → Search pill
+ * - Lists → My List pill
+ * - Profile → Profile pill
  */
 
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
+import { usePathname } from 'expo-router';
 
 export default function TabsLayout() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Sync bottom tab navigation with header pills
+  useEffect(() => {
+    // When bottom tab changes, ensure header pill is active
+    // This is handled by AppHeader's pathname detection
+  }, [pathname]);
+
   return (
     <Tabs
       screenOptions={{
@@ -18,6 +34,12 @@ export default function TabsLayout() {
         tabBarActiveTintColor: '#06B6D4',
         tabBarInactiveTintColor: '#9CA3AF',
       }}
+      screenListeners={{
+        tabPress: (e) => {
+          // When bottom tab is pressed, it will navigate automatically
+          // AppHeader will detect the pathname change and update active pill
+        },
+      }}
     >
       <Tabs.Screen
         name="index"
@@ -26,6 +48,12 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: () => {
+            // Home tab = Homepage (index page)
+            // This will show the homepage content
+          },
         }}
       />
       <Tabs.Screen
@@ -36,6 +64,12 @@ export default function TabsLayout() {
             <Ionicons name="search" size={size} color={color} />
           ),
         }}
+        listeners={{
+          tabPress: () => {
+            // Search tab = Search pill content
+            // AppHeader will detect pathname and highlight Search pill
+          },
+        }}
       />
       <Tabs.Screen
         name="lists"
@@ -45,6 +79,12 @@ export default function TabsLayout() {
             <Ionicons name="list" size={size} color={color} />
           ),
         }}
+        listeners={{
+          tabPress: () => {
+            // Lists tab = My List pill content
+            // AppHeader will detect pathname and highlight My List pill
+          },
+        }}
       />
       <Tabs.Screen
         name="profile"
@@ -53,6 +93,32 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: () => {
+            // Profile tab = Profile pill content
+            // AppHeader will detect pathname and highlight Profile pill
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="plus"
+        options={{
+          title: 'Plus',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trophy" size={size} color={color} />
+          ),
+          href: null, // Hide from bottom tab bar, only accessible via header pills
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bar-chart" size={size} color={color} />
+          ),
+          href: null, // Hide from bottom tab bar, only accessible via header pills
         }}
       />
     </Tabs>

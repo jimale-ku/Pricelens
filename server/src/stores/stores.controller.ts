@@ -40,6 +40,13 @@ export class StoresController {
     return this.storesService.findAll();
   }
 
+  @Post('request')
+  @ApiOperation({ summary: 'Request a new store to be added' })
+  @ApiResponse({ status: 201, description: 'Store request submitted successfully' })
+  requestStore(@Body() body: { storeName: string; userEmail?: string }) {
+    return this.storesService.requestStore(body.storeName, body.userEmail);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get store by ID' })
   @ApiResponse({ status: 200, description: 'Returns store details' })

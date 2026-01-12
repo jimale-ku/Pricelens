@@ -6,6 +6,18 @@
 import { Category } from '@/types';
 
 export const CATEGORIES: Record<string, Category> = {
+  search: {
+    id: 'search',
+    name: 'Search',
+    slug: 'search',
+    description: 'Search across all categories and stores',
+    icon: 'search',
+    iconColor: '#3B82F6',
+    type: 'product',
+    stores: [],
+    isNew: false,
+  },
+  
   allretailers: {
     id: 'allretailers',
     name: 'All Retailers',
@@ -449,9 +461,97 @@ export const CATEGORIES: Record<string, Category> = {
     type: 'product',
     stores: [],
   },
+  
+  mylist: {
+    id: 'mylist',
+    name: 'My List',
+    slug: 'my-list',
+    description: 'Your saved shopping list',
+    icon: 'list',
+    iconColor: '#3B82F6',
+    type: 'product',
+    stores: [],
+  },
+  
+  plus: {
+    id: 'plus',
+    name: 'Plus',
+    slug: 'plus',
+    description: 'PriceLens Plus features',
+    icon: 'trophy',
+    iconColor: '#A855F7',
+    type: 'product',
+    stores: [],
+  },
+  
+  profile: {
+    id: 'profile',
+    name: 'Profile',
+    slug: 'profile',
+    description: 'User profile and settings',
+    icon: 'person',
+    iconColor: '#6B7280',
+    type: 'product',
+    stores: [],
+  },
+  
+  analytics: {
+    id: 'analytics',
+    name: 'Analytics',
+    slug: 'analytics',
+    description: 'Developer analytics dashboard',
+    icon: 'bar-chart',
+    iconColor: '#10B981',
+    type: 'product',
+    stores: [],
+  },
 };
 
-export const CATEGORY_LIST = Object.values(CATEGORIES);
+export const CATEGORY_LIST = [
+  CATEGORIES.search,
+  CATEGORIES.groceries,
+  CATEGORIES.electronics,
+  CATEGORIES.kitchen,
+  CATEGORIES.homeaccessories,
+  CATEGORIES.clothing,
+  CATEGORIES.footwear,
+  CATEGORIES.books,
+  CATEGORIES.household,
+  CATEGORIES.medicine,
+  CATEGORIES.rentalcars,
+  CATEGORIES.hotels,
+  CATEGORIES.airfare,
+  CATEGORIES.tires,
+  CATEGORIES.haircuts,
+  CATEGORIES.oilchanges,
+  CATEGORIES.carwashes,
+  CATEGORIES.videogames,
+  CATEGORIES.gasstations,
+  CATEGORIES.carinsurance,
+  CATEGORIES.rentersinsurance,
+  CATEGORIES.apartments,
+  CATEGORIES.services,
+  CATEGORIES.fooddelivery,
+  CATEGORIES.massageparlors,
+  CATEGORIES.nailsalons,
+  CATEGORIES.beautyproducts,
+  CATEGORIES.gymmemberships,
+  CATEGORIES.sportsequipment,
+  CATEGORIES.officesupplies,
+  CATEGORIES.mattresses,
+  CATEGORIES.furniture,
+  CATEGORIES.homedecor,
+  CATEGORIES.movingcompanies,
+  CATEGORIES.storageunits,
+  CATEGORIES.spaservices,
+  CATEGORIES.toolshardware,
+  CATEGORIES.mealkits,
+  CATEGORIES.petsupplies,
+  CATEGORIES.mylist,
+  CATEGORIES.plus,
+  CATEGORIES.profile,
+  CATEGORIES.analytics,
+];
 
 export const TRENDING_SEARCHES = [
   'iPhone 15',

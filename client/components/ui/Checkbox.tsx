@@ -2,8 +2,8 @@
  * Reusable Checkbox Component
  */
 
-import { Pressable, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, Text, View, StyleSheet } from 'react-native';
+import CheckIcon from '../icons/CheckIcon';
 
 interface CheckboxProps {
   checked: boolean;
@@ -20,18 +20,70 @@ export default function Checkbox({
 }: CheckboxProps) {
   return (
     <Pressable
-      className={`flex-row items-center gap-2 ${disabled ? 'opacity-50' : ''}`}
       onPress={() => !disabled && onCheckedChange(!checked)}
       disabled={disabled}
+      style={[styles.container, disabled && styles.disabled]}
     >
+      {/* Checkbox Button */}
       <View
-        className={`w-5 h-5 rounded items-center justify-center ${
-          checked ? 'bg-cyan-500' : 'bg-white/5 border border-white/10'
-        }`}
+        style={[
+          styles.checkbox,
+          checked && styles.checkboxChecked,
+        ]}
       >
-        {checked && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+        {checked && (
+          <View style={styles.iconContainer}>
+            <CheckIcon width={14} height={14} color="#FFFFFF" />
+          </View>
+        )}
       </View>
-      {label && <Text className="text-white text-sm">{label}</Text>}
+
+      {/* Label */}
+      {label && (
+        <Text style={styles.label}>{label}</Text>
+      )}
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8, // var(--spacing) * 2
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  checkbox: {
+    width: 16, // calc(var(--spacing) * 4)
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#6B7280',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Box shadow
+    shadowColor: 'rgba(0, 0, 0, 0.05)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: 'rgb(79, 143, 247)', // var(--primary)
+    borderColor: 'rgb(79, 143, 247)',
+  },
+  iconContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    fontSize: 14, // var(--text-sm)
+    color: '#E8EDF4',
+    fontWeight: '400',
+  },
+});
+
