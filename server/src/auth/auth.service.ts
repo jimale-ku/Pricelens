@@ -31,6 +31,27 @@ export class AuthService {
       },
     });
 
+    // Create free subscription for new user (optional - only if subscription tables exist)
+    try {
+      const freePlan = await this.prisma.subscriptionPlan.findUnique({
+        where: { tier: 'FREE' },
+      });
+
+      if (freePlan) {
+        await this.prisma.subscription.create({
+          data: {
+            userId: user.id,
+            planId: freePlan.id,
+            status: 'ACTIVE',
+            tier: 'FREE',
+          },
+        });
+      }
+    } catch (error) {
+      // Subscription tables don't exist yet - that's okay, skip for now
+      // This will work once you run the migration: npx prisma migrate dev
+    }
+
     const tokens = await this.issueTokens(user.id, user.email);
 
     return {
@@ -112,6 +133,26 @@ export class AuthService {
             lastLoginAt: new Date(),
           },
         });
+
+        // Create free subscription for new user (optional - only if subscription tables exist)
+        try {
+          const freePlan = await this.prisma.subscriptionPlan.findUnique({
+            where: { tier: 'FREE' },
+          });
+
+          if (freePlan) {
+            await this.prisma.subscription.create({
+              data: {
+                userId: user.id,
+                planId: freePlan.id,
+                status: 'ACTIVE',
+                tier: 'FREE',
+              },
+            });
+          }
+        } catch (error) {
+          // Subscription tables don't exist yet - that's okay, skip for now
+        }
       }
     }
 

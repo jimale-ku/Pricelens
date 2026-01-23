@@ -74,3 +74,15 @@ async function testGoogleShopping() {
 
 testGoogleShopping().catch(console.error);
 
+
+
+
+
+
+
+
+
+
+
+
+

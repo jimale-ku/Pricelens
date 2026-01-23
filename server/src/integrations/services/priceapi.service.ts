@@ -95,6 +95,8 @@ export class PriceApiService {
       if (!createJobResponse.ok) {
         const errorText = await createJobResponse.text();
         this.logger.error(`❌ PriceAPI job creation failed (${createJobResponse.status}): ${errorText}`);
+        this.logger.error(`   Query: "${query}"`);
+        this.logger.error(`   Job payload: ${JSON.stringify(jobPayload)}`);
         // Don't return mock data - return empty array so user knows PriceAPI isn't working
         return [];
       }
@@ -112,143 +114,166 @@ export class PriceApiService {
 
       this.logger.debug(`✅ Job created: ${jobId}, waiting for results...`);
 
-      // Step 2: Poll for results (max 30 seconds for real API calls)
-      const maxAttempts = 15;
+      // Step 2: Poll for results (reduced timeout to prevent blocking - user expects < 2s response)
+      const maxAttempts = 10; // Reduced from 30 to 10 (20 seconds max instead of 60)
+      const pollInterval = 2000; // 2 seconds between polls
       let attempt = 0;
 
       while (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
         attempt++;
 
-        const resultResponse = await fetch(`${this.baseUrl}/v2/jobs/${jobId}?token=${this.apiKey}`);
-        
-        if (!resultResponse.ok) {
-          continue;
-        }
-
-        const resultData = await resultResponse.json();
-        this.logger.debug(`📊 Job status (attempt ${attempt}/${maxAttempts}): ${resultData.status}`);
-
-        // Check if job is complete
-        if (resultData.status === 'finished') {
-          // Download the actual results
-          const downloadResponse = await fetch(`${this.baseUrl}/v2/jobs/${jobId}/download?token=${this.apiKey}`);
+        try {
+          const resultResponse = await fetch(`${this.baseUrl}/v2/jobs/${jobId}?token=${this.apiKey}`);
           
-          if (!downloadResponse.ok) {
-            this.logger.error('❌ Failed to download results');
+          if (!resultResponse.ok) {
+            const errorText = await resultResponse.text();
+            this.logger.warn(`⚠️ Failed to check job status (${resultResponse.status}): ${errorText}`);
+            // Continue polling - might be a temporary API issue
+            continue;
+          }
+
+          const resultData = await resultResponse.json();
+          const status = resultData.status || 'unknown';
+          this.logger.debug(`📊 Job status (attempt ${attempt}/${maxAttempts}): ${status}`);
+
+          // Check if job is complete
+          if (status === 'finished') {
+            // Download the actual results
+            const downloadResponse = await fetch(`${this.baseUrl}/v2/jobs/${jobId}/download?token=${this.apiKey}`);
+            
+            if (!downloadResponse.ok) {
+              this.logger.error('❌ Failed to download results');
+              break;
+            }
+
+            const downloadData = await downloadResponse.json();
+            this.logger.debug(`📦 Downloaded ${downloadData.results?.length || 0} results`);
+            
+            // Log the actual response structure for debugging
+            if (downloadData.results && downloadData.results.length > 0) {
+              this.logger.debug(`🔍 Sample result structure: ${JSON.stringify(downloadData.results[0], null, 2).substring(0, 500)}`);
+            }
+
+            // Parse Amazon product_and_offers response
+            const products: PriceAPIProduct[] = [];
+            
+            if (downloadData.results && Array.isArray(downloadData.results)) {
+              for (const result of downloadData.results) {
+                if (result.success && result.content) {
+                  const content = result.content;
+                  const buybox = content.buybox;
+                  const productName = content.name || content.title || 'Unknown Product';
+                  const productUrl = content.url || '';
+                  const productImage = content.image_url || content.main_image?.link || content.image || '';
+                  
+                  // Extract barcode/GTIN (gtins array or eans array)
+                  let barcode: string | undefined = undefined;
+                  if (content.gtins && content.gtins.length > 0) {
+                    barcode = content.gtins[0];
+                  } else if (content.eans && content.eans.length > 0) {
+                    barcode = content.eans[0];
+                  }
+                  this.logger.debug(`📦 Product: ${productName}, Barcode: ${barcode || 'none'}, Image: ${productImage ? 'Yes' : 'No'}`);
+
+                  // Add the buybox offer (main offer)
+                  if (buybox && buybox.min_price) {
+                    // Use actual shop_name from PriceAPI, default to 'Amazon' if not provided
+                    const storeName = buybox.shop_name || 'Amazon';
+                    products.push({
+                      name: productName,
+                      price: parseFloat(buybox.min_price || 0),
+                      currency: buybox.currency || 'USD',
+                      store: storeName, // Use actual store name from PriceAPI
+                      url: productUrl,
+                      image: productImage,
+                      inStock: buybox.availability_text?.toLowerCase().includes('in stock') || true,
+                      shipping: parseFloat(buybox.shipping_cost || 0),
+                      barcode: barcode,
+                    });
+                    this.logger.debug(`✅ Added buybox product: ${productName} at $${buybox.min_price} from ${storeName}`);
+                    this.logger.debug(`🖼️ Product image URL: ${productImage || 'NO IMAGE'}`);
+                    this.logger.debug(`🔗 Product URL: ${productUrl || 'NO URL'}`);
+                    if (!productUrl) {
+                      this.logger.warn(`⚠️  Product URL is missing for ${productName}! Content URL: ${content.url || 'MISSING'}`);
+                    }
+                  } else {
+                    this.logger.debug(`⚠️  No buybox found for ${productName}. Buybox: ${JSON.stringify(buybox)}`);
+                  }
+
+                  // Add additional offers if available (limit to avoid duplicates)
+                  if (content.offers && Array.isArray(content.offers)) {
+                    this.logger.debug(`📦 Found ${content.offers.length} offers for ${productName}`);
+                    // Only add unique offers (different prices or stores)
+                    const seenPrices = new Set<number>();
+                    for (const offer of content.offers.slice(0, 10)) {
+                      if (offer.price) {
+                        const price = parseFloat(offer.price || 0);
+                        const storeName = offer.shop_name || 'Amazon Seller';
+                        
+                        // Skip if we already have this exact price (likely duplicate)
+                        if (seenPrices.has(price)) {
+                          continue;
+                        }
+                        seenPrices.add(price);
+                        
+                        products.push({
+                          name: productName,
+                          price: price,
+                          currency: offer.currency || 'USD',
+                          store: storeName, // Use actual store name from PriceAPI
+                          url: productUrl,
+                          image: productImage,
+                          inStock: offer.availability_text?.toLowerCase().includes('in stock') || true,
+                          shipping: parseFloat(offer.shipping_cost || 0),
+                          barcode: barcode,
+                        });
+                        this.logger.debug(`✅ Added offer: ${storeName} at $${price}`);
+                      }
+                    }
+                  } else {
+                    this.logger.debug(`⚠️  No offers array found for ${productName}`);
+                  }
+                } else {
+                  this.logger.debug(`⚠️  Result not successful or no content. Success: ${result.success}, Content: ${result.content ? 'Yes' : 'No'}`);
+                }
+              }
+            } else {
+              this.logger.warn(`⚠️  No results array found. Response keys: ${Object.keys(downloadData).join(', ')}`);
+            }
+
+            if (products.length > 0) {
+              this.logger.log(`✅ Got ${products.length} products from PriceAPI (Amazon)`);
+              return products.slice(0, options?.limit || 20);
+            } else {
+              this.logger.warn('⚠️  No products found in results - PriceAPI returned data but parsing failed');
+              this.logger.warn(`⚠️  Response structure: ${JSON.stringify(downloadData).substring(0, 1000)}`);
+              // Don't return mock data - return empty array so user knows PriceAPI isn't working
+              return [];
+            }
+          }
+
+          if (status === 'failed') {
+            this.logger.error('❌ PriceAPI job failed');
+            this.logger.error(`Reason: ${JSON.stringify(resultData)}`);
             break;
           }
 
-          const downloadData = await downloadResponse.json();
-          this.logger.debug(`📦 Downloaded ${downloadData.results?.length || 0} results`);
-          
-          // Log the actual response structure for debugging
-          if (downloadData.results && downloadData.results.length > 0) {
-            this.logger.debug(`🔍 Sample result structure: ${JSON.stringify(downloadData.results[0], null, 2).substring(0, 500)}`);
+          // Handle other statuses (pending, processing, etc.)
+          if (status !== 'working' && status !== 'finished' && status !== 'failed') {
+            this.logger.debug(`⚠️ Unknown job status: ${status}, continuing to poll...`);
           }
-
-          // Parse Amazon product_and_offers response
-          const products: PriceAPIProduct[] = [];
-          
-          if (downloadData.results && Array.isArray(downloadData.results)) {
-            for (const result of downloadData.results) {
-              if (result.success && result.content) {
-                const content = result.content;
-                const buybox = content.buybox;
-                const productName = content.name || content.title || 'Unknown Product';
-                const productUrl = content.url || '';
-                const productImage = content.image_url || content.main_image?.link || content.image || '';
-                
-                // Extract barcode/GTIN (gtins array or eans array)
-                let barcode: string | undefined = undefined;
-                if (content.gtins && content.gtins.length > 0) {
-                  barcode = content.gtins[0];
-                } else if (content.eans && content.eans.length > 0) {
-                  barcode = content.eans[0];
-                }
-                this.logger.debug(`📦 Product: ${productName}, Barcode: ${barcode || 'none'}, Image: ${productImage ? 'Yes' : 'No'}`);
-
-                // Add the buybox offer (main offer)
-                if (buybox && buybox.min_price) {
-                  // Use actual shop_name from PriceAPI, default to 'Amazon' if not provided
-                  const storeName = buybox.shop_name || 'Amazon';
-                  products.push({
-                    name: productName,
-                    price: parseFloat(buybox.min_price || 0),
-                    currency: buybox.currency || 'USD',
-                    store: storeName, // Use actual store name from PriceAPI
-                    url: productUrl,
-                    image: productImage,
-                    inStock: buybox.availability_text?.toLowerCase().includes('in stock') || true,
-                    shipping: parseFloat(buybox.shipping_cost || 0),
-                    barcode: barcode,
-                  });
-                  this.logger.debug(`✅ Added buybox product: ${productName} at $${buybox.min_price} from ${storeName}`);
-                  this.logger.debug(`🖼️ Product image URL: ${productImage || 'NO IMAGE'}`);
-                } else {
-                  this.logger.debug(`⚠️  No buybox found for ${productName}. Buybox: ${JSON.stringify(buybox)}`);
-                }
-
-                // Add additional offers if available (limit to avoid duplicates)
-                if (content.offers && Array.isArray(content.offers)) {
-                  this.logger.debug(`📦 Found ${content.offers.length} offers for ${productName}`);
-                  // Only add unique offers (different prices or stores)
-                  const seenPrices = new Set<number>();
-                  for (const offer of content.offers.slice(0, 10)) {
-                    if (offer.price) {
-                      const price = parseFloat(offer.price || 0);
-                      const storeName = offer.shop_name || 'Amazon Seller';
-                      
-                      // Skip if we already have this exact price (likely duplicate)
-                      if (seenPrices.has(price)) {
-                        continue;
-                      }
-                      seenPrices.add(price);
-                      
-                      products.push({
-                        name: productName,
-                        price: price,
-                        currency: offer.currency || 'USD',
-                        store: storeName, // Use actual store name from PriceAPI
-                        url: productUrl,
-                        image: productImage,
-                        inStock: offer.availability_text?.toLowerCase().includes('in stock') || true,
-                        shipping: parseFloat(offer.shipping_cost || 0),
-                        barcode: barcode,
-                      });
-                      this.logger.debug(`✅ Added offer: ${storeName} at $${price}`);
-                    }
-                  }
-                } else {
-                  this.logger.debug(`⚠️  No offers array found for ${productName}`);
-                }
-              } else {
-                this.logger.debug(`⚠️  Result not successful or no content. Success: ${result.success}, Content: ${result.content ? 'Yes' : 'No'}`);
-              }
-            }
-          } else {
-            this.logger.warn(`⚠️  No results array found. Response keys: ${Object.keys(downloadData).join(', ')}`);
-          }
-
-          if (products.length > 0) {
-            this.logger.log(`✅ Got ${products.length} products from PriceAPI (Amazon)`);
-            return products.slice(0, options?.limit || 20);
-          } else {
-            this.logger.warn('⚠️  No products found in results - PriceAPI returned data but parsing failed');
-            this.logger.warn(`⚠️  Response structure: ${JSON.stringify(downloadData).substring(0, 1000)}`);
-            // Don't return mock data - return empty array so user knows PriceAPI isn't working
-            return [];
-          }
-        }
-
-        if (resultData.status === 'failed') {
-          this.logger.error('❌ PriceAPI job failed');
-          this.logger.error(`Reason: ${JSON.stringify(resultData)}`);
-          break;
+        } catch (error) {
+          this.logger.warn(`⚠️ Error checking job status (attempt ${attempt}/${maxAttempts}): ${error.message}`);
+          // Continue polling - might be a temporary network issue
+          continue;
         }
       }
 
-      this.logger.warn('⚠️ PriceAPI job timeout - no results returned');
+      this.logger.warn(`⚠️ PriceAPI job timeout after ${maxAttempts * pollInterval / 1000} seconds - no results returned`);
+      this.logger.warn(`   Query: "${query}"`);
+      this.logger.warn(`   Job ID: ${jobId}`);
+      this.logger.warn(`   💡 The job may still be processing. Check PriceAPI dashboard for job status.`);
       // Don't return mock data - return empty array so user knows PriceAPI isn't working
       return [];
 

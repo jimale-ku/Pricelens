@@ -75,4 +75,49 @@ export class CategoriesService {
       where: { id },
     });
   }
+
+  /**
+   * Get product counts by subcategory for a given category
+   * @param categoryId Category ID
+   * @returns Object mapping subcategory IDs (normalized) to product counts
+   * 
+   * Note: Normalizes subcategory names to lowercase IDs for matching with frontend
+   * Example: "TVs" -> "tvs", "Gaming" -> "gaming"
+   */
+  async getSubcategoryCounts(categoryId: string): Promise<Record<string, number>> {
+    const products = await this.prisma.product.groupBy({
+      by: ['subcategory'],
+      where: {
+        categoryId,
+        subcategory: {
+          not: null,
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    const counts: Record<string, number> = {};
+    products.forEach((product) => {
+      if (product.subcategory) {
+        // Normalize subcategory name to lowercase ID for matching with frontend
+        // Frontend uses IDs like "tvs", "gaming", "headphones"
+        const normalizedId = product.subcategory.toLowerCase().trim();
+        counts[normalizedId] = product._count.id;
+      }
+    });
+
+    return counts;
+  }
+
+  /**
+   * Get product counts by subcategory for a category by slug
+   * @param slug Category slug
+   * @returns Object mapping subcategory names to product counts
+   */
+  async getSubcategoryCountsBySlug(slug: string): Promise<Record<string, number>> {
+    const category = await this.findBySlug(slug);
+    return this.getSubcategoryCounts(category.id);
+  }
 }

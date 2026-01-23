@@ -11,7 +11,7 @@
  * 3. That's it! All the layout, search, filters, and product cards are handled here
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Modal, Pressable, Image, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Modal, Pressable, Image, ActivityIndicator, Alert, useWindowDimensions, FlatList } from "react-native";
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -20,7 +20,7 @@ import Svg, { Path } from 'react-native-svg';
 import AppHeader from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import StoreChip from '../StoreChip';
-import ProductCard from '../ProductCard';
+import ProductCardSimple from '../ProductCardSimple';
 import { API_ENDPOINTS, API_BASE_URL } from '../../constants/api';
 import { transformProducts, transformCompareResponse } from '../../utils/apiTransform';
 import { testBackendConnection } from '../../utils/testConnection';
@@ -62,7 +62,7 @@ const validateImport = (component: any, name: string, importPath: string) => {
 };
 
 try {
-  validateImport(ProductCard, 'ProductCard', '../ProductCard');
+  validateImport(ProductCardSimple, 'ProductCardSimple', '../ProductCardSimple');
   validateImport(StoreChip, 'StoreChip', '../StoreChip');
   validateImport(AppHeader, 'AppHeader', '@/components/AppHeader');
   validateImport(BottomNav, 'BottomNav', '@/components/BottomNav');
@@ -133,10 +133,22 @@ export default function PatternALayout({
     <Ionicons name="cube-outline" size={size} color={color} />
   ));
   
-  const [selectedStores, setSelectedStores] = useState<string[]>(['All Stores']);
+  // Responsive design - mobile vs desktop
+  const { width } = useWindowDimensions();
+  const isMobile = width < 640; // md breakpoint
+  
   const [sortDropdownVisible, setSortDropdownVisible] = useState(false);
-  const [selectedSort, setSelectedSort] = useState('Lowest Price');
+  // Default sort: "Popularity" for clothing, "Relevance" for others
+  const [selectedSort, setSelectedSort] = useState<string>(
+    categorySlug === 'clothing' || categorySlug === 'clothes' ? 'Popularity' : 'Relevance'
+  );
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  
+  // Clothing-specific filters
+  const [genderDropdownVisible, setGenderDropdownVisible] = useState(false);
+  const [selectedGender, setSelectedGender] = useState<string>('All');
+  const [sizeDropdownVisible, setSizeDropdownVisible] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<string>('All Sizes');
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -145,14 +157,40 @@ export default function PatternALayout({
   const [hasSearched, setHasSearched] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Search pagination state (for infinite scroll)
+  const [searchPage, setSearchPage] = useState(1);
+  const [hasMoreSearchResults, setHasMoreSearchResults] = useState(false);
+  const [isLoadingMoreSearch, setIsLoadingMoreSearch] = useState(false);
+  const SEARCH_PAGE_SIZE = 6; // Load 6 items per page
+  
+  // Subcategory products state with pagination
+  const [subcategoryProducts, setSubcategoryProducts] = useState<Product[]>([]);
+  const [isLoadingSubcategory, setIsLoadingSubcategory] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 6; // Load 6 items at a time
+  
   // Reset state when category changes (without remounting component)
   useEffect(() => {
-    setSelectedStores(['All Stores']);
     setSelectedSubcategory(null);
     setSearchQuery('');
     setSearchResults([]);
     setHasSearched(false);
     setIsSearching(false);
+    setSortDropdownVisible(false);
+    setSubcategoryProducts([]);
+    // Reset clothing filters
+    setSelectedGender('All');
+    setSelectedSize('All Sizes');
+    setGenderDropdownVisible(false);
+    setSizeDropdownVisible(false);
+    // Reset sort to default based on category
+    if (categorySlug === 'clothing' || categorySlug === 'clothes') {
+      setSelectedSort('Popularity');
+    } else {
+      setSelectedSort('Relevance');
+    }
     // Clear any pending search
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -160,27 +198,158 @@ export default function PatternALayout({
     }
   }, [categorySlug]);
   
-  const SORT_OPTIONS = ['Lowest Price', 'Nearest Store'];
+  // Fetch products by subcategory when subcategory is selected (initial load)
+  useEffect(() => {
+    if (selectedSubcategory) {
+      // Reset pagination when subcategory changes
+      setCurrentPage(1);
+      setHasMoreProducts(true);
+      setIsLoadingSubcategory(true);
+      
+      const fetchSubcategoryProducts = async (page: number = 1, append: boolean = false) => {
+        try {
+          // Use pagination endpoint
+          const url = API_ENDPOINTS.products.popular(categorySlug, pageSize, undefined, selectedSubcategory, page);
+          console.log('📚 Fetching products for subcategory:', {
+            categorySlug,
+            selectedSubcategory,
+            page,
+            url,
+          });
+          
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('📦 Raw response from backend:', {
+              isArray: Array.isArray(data),
+              hasProducts: !!data.products,
+              dataKeys: Object.keys(data),
+              productsCount: Array.isArray(data) ? data.length : (data.products?.length || 0),
+              hasMore: data.hasMore !== undefined ? data.hasMore : true,
+            });
+            
+            const products = Array.isArray(data) ? data : (data.products || []);
+            const transformed = transformProducts(products).filter(p => 
+              p && 
+              p.id && 
+              p.name && 
+              typeof p.name === 'string' &&
+              (p.subcategory === null || typeof p.subcategory === 'string') &&
+              (p.category === null || typeof p.category === 'string')
+            );
+            console.log(`✅ Fetched ${transformed.length} products for subcategory "${selectedSubcategory}" (page ${page})`);
+            
+            if (append) {
+              setSubcategoryProducts(prev => [...prev, ...transformed]);
+            } else {
+              setSubcategoryProducts(transformed);
+            }
+            
+            // Check if there are more products
+            const hasMore = data.hasMore !== undefined ? data.hasMore : (transformed.length === pageSize);
+            setHasMoreProducts(hasMore);
+          } else {
+            const errorText = await response.text();
+            console.warn(`❌ Failed to fetch subcategory products: ${response.status}`, errorText);
+            if (!append) {
+              setSubcategoryProducts([]);
+            }
+            setHasMoreProducts(false);
+          }
+        } catch (error) {
+          console.error('❌ Error fetching subcategory products:', error);
+          if (!append) {
+            setSubcategoryProducts([]);
+          }
+          setHasMoreProducts(false);
+        } finally {
+          setIsLoadingSubcategory(false);
+          setIsLoadingMore(false);
+        }
+      };
+      
+      fetchSubcategoryProducts(1, false);
+    } else {
+      setSubcategoryProducts([]);
+      setCurrentPage(1);
+      setHasMoreProducts(true);
+    }
+  }, [selectedSubcategory, categorySlug]);
+
+  // Load more products (infinite scroll - TikTok-style)
+  const loadMoreProducts = async () => {
+    if (!selectedSubcategory || isLoadingMore || !hasMoreProducts) return;
+    
+    setIsLoadingMore(true);
+    const nextPage = currentPage + 1;
+    
+    try {
+      const url = API_ENDPOINTS.products.popular(categorySlug, pageSize, undefined, selectedSubcategory, nextPage);
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const products = Array.isArray(data) ? data : (data.products || []);
+        const transformed = transformProducts(products);
+        
+        if (transformed.length > 0) {
+          setSubcategoryProducts(prev => [...prev, ...transformed]);
+          setCurrentPage(nextPage);
+          const hasMore = data.hasMore !== undefined ? data.hasMore : (transformed.length === pageSize);
+          setHasMoreProducts(hasMore);
+          console.log(`📜 Loaded page ${nextPage}: ${transformed.length} products, hasMore: ${hasMore}`);
+        } else {
+          setHasMoreProducts(false);
+        }
+      } else {
+        setHasMoreProducts(false);
+      }
+    } catch (error) {
+      console.error('❌ Error loading more products:', error);
+      setHasMoreProducts(false);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
   
-  // Search function - Uses PriceAPI-enabled endpoint with fallback
-  const performSearch = async (query: string) => {
+  // Sort options for product discovery (what product to find)
+  // Rule: Never let users sort by something they can't see (no price sorting here)
+  // Clothing category doesn't show "Relevance" option
+  const SORT_OPTIONS = useMemo(() => {
+    if (categorySlug === 'clothing' || categorySlug === 'clothes') {
+      return ['Popularity', 'New Arrivals'];
+    }
+    return ['Relevance', 'Popularity', 'New Arrivals'];
+  }, [categorySlug]);
+  
+  // Search function - Uses FAST search endpoint (returns products immediately, no store prices)
+  const performSearch = async (query: string, page: number = 1, append: boolean = false) => {
     if (!query.trim()) {
       setSearchResults([]);
       setHasSearched(false);
       return;
     }
     
-    console.log('🔍 performSearch STARTED with query:', query);
-    setIsSearching(true);
-    setHasSearched(true);
+    console.log(`🔍 Fast search STARTED with query: "${query}", page: ${page}, append: ${append}`);
+    
+    if (append) {
+      setIsLoadingMoreSearch(true);
+    } else {
+      setIsSearching(true);
+      setHasSearched(true);
+    }
     
     try {
-      const searchUrl = API_ENDPOINTS.products.compareMultiStore(query.trim(), 'auto');
-      console.log('🔍 Fetching from URL:', searchUrl);
-      console.log('🔍 API_BASE_URL:', API_BASE_URL);
+      // Use FAST search endpoint - returns products immediately without waiting for all store prices
+      // Pass categorySlug instead of categoryId (more reliable - backend will look up the ID)
+      // For pagination: request only the items for this page (6 items per page)
+      const searchUrl = API_ENDPOINTS.products.fastSearch(query.trim(), 'auto', undefined, SEARCH_PAGE_SIZE, categorySlug, page);
+      console.log('🔍 Fetching from FAST search URL:', searchUrl);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      // Increase timeout for pagination requests (page > 1) as they may take longer
+      const timeoutDuration = page > 1 ? 20000 : 15000; // 20s for pagination, 15s for initial search
+      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
       
       const response = await fetch(searchUrl, {
         method: 'GET',
@@ -197,32 +366,62 @@ export default function PatternALayout({
       }
       
       const data = await response.json();
-      console.log('📦 Raw API response:', {
-        hasProduct: !!data.product,
-        productName: data.product?.name,
-        productImage: data.product?.image,
-        imageType: typeof data.product?.image,
-        pricesCount: data.prices?.length || 0,
+      console.log('📦 Fast search response:', {
+        isArray: Array.isArray(data),
+        productsCount: Array.isArray(data) ? data.length : 0,
+        firstProduct: Array.isArray(data) && data.length > 0 ? data[0] : null,
       });
       
-      const transformedProduct = transformCompareResponse(data);
-      console.log('📦 Transformed product:', {
-        name: transformedProduct?.name,
-        image: transformedProduct?.image,
-        imageType: typeof transformedProduct?.image,
-        hasImage: !!transformedProduct?.image,
-        storePricesCount: transformedProduct?.storePrices?.length || 0,
-      });
+      // Fast search returns array of products (no store prices)
+      const products = Array.isArray(data) ? data : [];
       
-      if (transformedProduct) {
-        setSearchResults([transformedProduct]);
-        setHasSearched(true); // CRITICAL: Mark that search completed successfully
-      } else {
+      if (products.length === 0) {
+        console.warn('⚠️  Fast search returned no products');
         setSearchResults([]);
-        setHasSearched(true); // Still mark as searched even if no results
+        setHasSearched(true);
+        return;
       }
+      
+      // Transform products to match expected format
+      // CRITICAL: Filter by categorySlug to ensure only relevant products show
+      const transformedProducts = products
+        .map((p: any) => ({
+          id: p.id || `product-${Date.now()}-${Math.random()}`,
+          name: p.name || 'Unknown Product',
+          image: p.image || '',
+          category: p.category || 'Uncategorized',
+          categorySlug: p.categorySlug || null, // Include categorySlug for filtering
+          storePrices: [], // No store prices in fast search - fetched when user clicks "View Price"
+        }))
+        .filter((p: any) => {
+          // Filter out products that don't match the current category
+          // Only filter if categorySlug is provided and product has a categorySlug
+          if (categorySlug && p.categorySlug) {
+            return p.categorySlug === categorySlug;
+          }
+          // If no categorySlug on product, include it (backend should handle filtering)
+          return p && p.name && p.id;
+        });
+      
+      console.log('✅ Fast search returned', transformedProducts.length, 'products');
+      
+      // Handle pagination: append or replace results
+      if (append) {
+        // Append new results for infinite scroll
+        setSearchResults(prev => [...prev, ...transformedProducts]);
+        // Check if we got fewer results than requested (means no more pages)
+        // If we got 0 results, there are no more pages
+        setHasMoreSearchResults(transformedProducts.length > 0 && transformedProducts.length >= SEARCH_PAGE_SIZE);
+      } else {
+        // Replace results for new search
+        setSearchResults(transformedProducts);
+        // Check if there are more results available
+        setHasMoreSearchResults(transformedProducts.length >= SEARCH_PAGE_SIZE);
+      }
+      
+      setHasSearched(true);
     } catch (error: any) {
-      console.error('Search error:', error);
+      console.error('❌ Search error:', error);
       
       const isNetworkError = 
         error.message?.includes('Network request failed') || 
@@ -231,8 +430,8 @@ export default function PatternALayout({
         error.name === 'AbortError';
       
       if (isNetworkError) {
+        console.log('⚠️ Network error, trying database search fallback...');
         try {
-          console.log('⚠️ PriceAPI endpoint failed, trying database search...');
           const fallbackUrl = `${API_ENDPOINTS.products.search}?q=${encodeURIComponent(query.trim())}`;
           const fallbackController = new AbortController();
           const fallbackTimeout = setTimeout(() => fallbackController.abort(), 10000);
@@ -250,11 +449,16 @@ export default function PatternALayout({
           if (fallbackResponse.ok) {
             const fallbackData = await fallbackResponse.json();
             const transformedProducts = transformProducts(Array.isArray(fallbackData) ? fallbackData : []);
-            setSearchResults(transformedProducts);
-            return;
+            if (transformedProducts.length > 0) {
+              console.log('✅ Fallback search found products:', transformedProducts.length);
+              setSearchResults(transformedProducts);
+              setHasSearched(true);
+              setIsSearching(false);
+              return;
+            }
           }
         } catch (fallbackError) {
-          console.error('Fallback search also failed:', fallbackError);
+          console.error('❌ Fallback search also failed:', fallbackError);
         }
         
         const serverUrl = API_ENDPOINTS.products.compareMultiStore(query.trim(), 'auto').split('?')[0];
@@ -264,20 +468,37 @@ export default function PatternALayout({
           [{ text: 'OK' }]
         );
       } else {
-        Alert.alert(
-          'Search Error',
-          error.message || 'Failed to search products. Please try again.',
-          [{ text: 'OK' }]
-        );
+        // Don't show alert for timeout/abort errors - just log
+        if (error.name !== 'AbortError') {
+          Alert.alert(
+            'Search Error',
+            error.message || 'Failed to search products. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
       }
       
       setSearchResults([]);
+      setHasSearched(true); // Mark as searched even on error so we show "no results" message
+      setHasMoreSearchResults(false);
     } finally {
       setIsSearching(false);
+      setIsLoadingMoreSearch(false);
     }
   };
   
-  // Debounced search effect
+  // Load more search results (infinite scroll)
+  const loadMoreSearchResults = async () => {
+    if (!searchQuery.trim() || isLoadingMoreSearch || !hasMoreSearchResults || isSearching) {
+      return;
+    }
+    
+    const nextPage = searchPage + 1;
+    setSearchPage(nextPage);
+    await performSearch(searchQuery, nextPage, true); // Append results
+  };
+  
+  // Improved debounced search - waits for complete word before searching
   useEffect(() => {
     console.log('🔍 Search useEffect triggered, searchQuery:', searchQuery);
     
@@ -289,14 +510,30 @@ export default function PatternALayout({
       console.log('🔍 Search query is empty, clearing results');
       setSearchResults([]);
       setHasSearched(false);
+      setSearchPage(1);
+      setHasMoreSearchResults(false);
+      return;
+    }
+    
+    // Minimum query length: 3 characters to avoid irrelevant results
+    const MIN_QUERY_LENGTH = 3;
+    if (searchQuery.trim().length < MIN_QUERY_LENGTH) {
+      console.log(`🔍 Query too short (${searchQuery.trim().length} < ${MIN_QUERY_LENGTH}), waiting for more input...`);
+      setSearchResults([]);
+      setHasSearched(false);
       return;
     }
     
     console.log('🔍 Setting up search timeout for:', searchQuery);
+    // Wait 1.5 seconds after user stops typing to ensure they've completed the word
+    // This prevents searching while user is still typing
     searchTimeoutRef.current = setTimeout(() => {
       console.log('🔍 Timeout fired, calling performSearch with:', searchQuery);
-      performSearch(searchQuery);
-    }, 500);
+      // Reset pagination when new search starts
+      setSearchPage(1);
+      setHasMoreSearchResults(false);
+      performSearch(searchQuery, 1); // Start from page 1
+    }, 1500); // 1.5 seconds - wait for user to finish typing
     
     return () => {
       if (searchTimeoutRef.current) {
@@ -309,8 +546,16 @@ export default function PatternALayout({
   // Memoize products to avoid recalculation on every render
   // CRITICAL: Filter out any undefined/null products to prevent render errors
   const displayProducts = useMemo(() => {
+    // Priority: Search results > Subcategory products > Default products
     const useSearchResults = hasSearched && searchQuery.trim();
-    const products = useSearchResults ? searchResults : defaultProducts;
+    const useSubcategoryProducts = selectedSubcategory && subcategoryProducts.length > 0;
+    
+    // For search results, use all results (pagination handled separately)
+    const products = useSearchResults 
+      ? searchResults 
+      : useSubcategoryProducts 
+        ? subcategoryProducts 
+        : defaultProducts;
     
     console.log('📦 displayProducts calculation:', {
       hasSearched,
@@ -323,25 +568,140 @@ export default function PatternALayout({
       firstProductName: products[0]?.name,
     });
     
-    // Filter out any undefined/null products
-    return Array.isArray(products) ? products.filter(p => p != null && p.id != null) : [];
-  }, [hasSearched, searchQuery, searchResults, defaultProducts]);
+    // Filter out any undefined/null products AND products without valid images AND test products
+    const seenProductNames = new Set<string>();
+    return Array.isArray(products) ? products.filter(p => {
+      if (p == null || p.id == null) return false;
+      
+      // EXCLUDE TEST PRODUCTS
+      const productName = (p.name || '').toLowerCase();
+      if (productName.includes('test product')) {
+        console.warn(`🚫 Filtering out test product: "${p.name}"`);
+        return false;
+      }
+      
+      // DEDUPLICATE: Remove duplicate products by name
+      if (seenProductNames.has(productName)) {
+        console.warn(`🔄 Filtering out duplicate product: "${p.name}"`);
+        return false;
+      }
+      seenProductNames.add(productName);
+      
+      // Check if product has a valid image (exclude example.com test URLs)
+      const hasValidImage = p.image && 
+        typeof p.image === 'string' && 
+        p.image.trim().length > 0 &&
+        (p.image.startsWith('http://') || p.image.startsWith('https://')) &&
+        !p.image.includes('placeholder') &&
+        !p.image.includes('via.placeholder') &&
+        !p.image.includes('example.com'); // Exclude example.com URLs (test images)
+      
+      if (!hasValidImage) {
+        console.warn(`⚠️ Filtering out product "${p.name}" - no valid image`);
+        return false;
+      }
+      
+      return true;
+    }) : [];
+  }, [hasSearched, searchQuery, searchResults, defaultProducts, selectedSubcategory, subcategoryProducts]);
   
-  // Memoize filtered products
+  // Removed store filtering logic - stores are filtered on comparison page, not category page
+
+  // Simplified filtering - only by subcategory and sort (no store filtering on category page)
   const filteredProducts = useMemo(() => {
+    let products = displayProducts;
+
+    // Filter by subcategory
     if (selectedSubcategory) {
-      return displayProducts.filter(p => 
-        p && p.category && p.category.toLowerCase() === selectedSubcategory.toLowerCase()
-      );
+      products = products.filter(p => {
+        if (!p) return false;
+        if (p.subcategory && typeof p.subcategory === 'string') {
+          return p.subcategory.toLowerCase() === selectedSubcategory.toLowerCase();
+        }
+        if (p.category && typeof p.category === 'string') {
+          return p.category.toLowerCase() === selectedSubcategory.toLowerCase();
+        }
+        return false;
+      });
     }
-    return displayProducts;
-  }, [displayProducts, selectedSubcategory]);
+
+    // Clothing-specific filters: Gender and Size
+    if (categorySlug === 'clothing' || categorySlug === 'clothes') {
+      // Filter by Gender
+      if (selectedGender && selectedGender !== 'All') {
+        products = products.filter(p => {
+          if (!p || !p.name || typeof p.name !== 'string') return false;
+          const productName = p.name.toLowerCase();
+          const gender = selectedGender && typeof selectedGender === 'string' ? selectedGender.toLowerCase() : '';
+          
+          // Check for gender keywords in product name
+          if (gender === 'men' || gender === "men's") {
+            return productName.includes("men") || productName.includes("men's") || 
+                   productName.includes("male") || productName.includes("guy");
+          } else if (gender === 'women' || gender === "women's") {
+            return productName.includes("women") || productName.includes("women's") || 
+                   productName.includes("female") || productName.includes("lady") ||
+                   productName.includes("ladies");
+          } else if (gender === 'kids' || gender === "kid's" || gender === "children's") {
+            return productName.includes("kid") || productName.includes("child") || 
+                   productName.includes("toddler") || productName.includes("youth");
+          }
+          return true;
+        });
+      }
+
+      // Filter by Size
+      if (selectedSize && selectedSize !== 'All Sizes') {
+        products = products.filter(p => {
+          if (!p || !p.name || typeof p.name !== 'string') return false;
+          const productName = p.name.toLowerCase();
+          const size = selectedSize && typeof selectedSize === 'string' ? selectedSize.toLowerCase() : '';
+          
+          // Check for size keywords in product name
+          return productName.includes(size) || 
+                 (size === 'xs' && productName.includes('extra small')) ||
+                 (size === 's' && productName.includes(' small')) ||
+                 (size === 'm' && productName.includes(' medium')) ||
+                 (size === 'l' && productName.includes(' large')) ||
+                 (size === 'xl' && (productName.includes('extra large') || productName.includes('x-large'))) ||
+                 (size === 'xxl' && (productName.includes('xxl') || productName.includes('2xl')));
+        });
+      }
+    }
+
+    // Sort products (not store prices - that's for comparison page)
+    // Rule: Never let users sort by something they can't see
+    if (selectedSort === 'Popularity') {
+      // Sort by maxSavings (products with better deals first)
+      products = [...products].sort((a, b) => {
+        const savingsA = a.maxSavings || 0;
+        const savingsB = b.maxSavings || 0;
+        return savingsB - savingsA;
+      });
+    } else if (selectedSort === 'New Arrivals') {
+      // Sort by creation date (newest first) - using product ID as proxy for now
+      // TODO: Add createdAt field to products for proper sorting
+      products = [...products].sort((a, b) => {
+        // For now, reverse order as placeholder (newest products added last)
+        return 0; // Keep original order until we have createdAt
+      });
+    }
+    // "Relevance" - keep original order (default)
+
+    return products;
+  }, [displayProducts, selectedSubcategory, selectedSort, categorySlug, selectedGender, selectedSize]);
   
-  // Limit initial render to first 6 products for faster display
+  // Limit initial render to first 12 products for faster display
   // CRITICAL: Ensure no undefined products are included
+  // For search results, show all results (infinite scroll handles pagination)
+  // For other views, limit to 12 initially
   const productsToRender = useMemo(() => {
-    return filteredProducts.filter(p => p != null && p.id != null).slice(0, 6);
-  }, [filteredProducts]);
+    const validProducts = filteredProducts.filter(p => p != null && p.id != null);
+    const isSearching = hasSearched && searchQuery.trim();
+    // If searching, show all results (pagination handled by backend)
+    // If not searching, limit to initial view
+    return isSearching ? validProducts : validProducts.slice(0, 12);
+  }, [filteredProducts, hasSearched, searchQuery]);
   
   // OPTIMIZED: Defer product rendering when category changes to show page structure immediately
   // This allows the header, search bar, and filters to render first
@@ -363,8 +723,46 @@ export default function PatternALayout({
     };
   }, [categorySlug]); // Only depend on categorySlug to avoid unnecessary resets
   
+  // Clothing-specific subcategories with icons
+  const clothingSubcategories = useMemo(() => {
+    if (categorySlug !== 'clothing' && categorySlug !== 'clothes') return [];
+    
+    return [
+      { id: 'jeans', name: 'Jeans', icon: '👖' },
+      { id: 't-shirts', name: 'T-Shirts', icon: '👕' },
+      { id: 'jackets', name: 'Jackets', icon: '🧥' },
+      { id: 'dresses', name: 'Dresses', icon: '👗' },
+      { id: 'activewear', name: 'Activewear', icon: '🏃' },
+      { id: 'hoodies', name: 'Hoodies', icon: '🧦' },
+      { id: 'dress-shirts', name: 'Dress Shirts', icon: '👔' },
+      { id: 'sweaters', name: 'Sweaters', icon: '🧶' },
+    ];
+  }, [categorySlug]);
+
+  // Use clothing subcategories if available, otherwise use passed subcategories
+  const displaySubcategories = useMemo(() => {
+    if (clothingSubcategories.length > 0) {
+      return clothingSubcategories.map(sub => ({
+        id: sub.id,
+        name: sub.name,
+        count: subcategories.find(s => s.id === sub.id)?.count,
+      }));
+    }
+    return subcategories;
+  }, [clothingSubcategories, subcategories]);
+
   // Memoize subcategory emoji map to avoid recreating on every render
   const subcategoryEmojiMap = useMemo(() => ({
+    // Clothing subcategories
+    'jeans': '👖',
+    't-shirts': '👕',
+    'jackets': '🧥',
+    'dresses': '👗',
+    'activewear': '🏃',
+    'hoodies': '🧦',
+    'dress-shirts': '👔',
+    'sweaters': '🧶',
+    // Existing subcategories
     'tvs': '📺',
     'headphones': '🎧',
     'tablets': '📱',
@@ -398,6 +796,18 @@ export default function PatternALayout({
         removeClippedSubviews={true} // Enable clipping for performance
         bounces={false}
         scrollEventThrottle={16}
+        onScroll={({ nativeEvent }) => {
+          // Infinite scroll: Load more when near bottom (TikTok-style)
+          if (selectedSubcategory && hasMoreProducts && !isLoadingMore) {
+            const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+            const paddingToBottom = 200; // Trigger 200px before bottom
+            const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+            
+            if (isCloseToBottom) {
+              loadMoreProducts();
+            }
+          }
+        }}
       >
         
         <View style={{
@@ -506,41 +916,37 @@ export default function PatternALayout({
             </Text>
           </View>
           
-          {/* Search & Filters Section */}
-          <Text style={{
-            fontSize: 18,
-            lineHeight: 28,
-            color: '#e2e8f0',
-            fontWeight: '600',
+          {/* Top Bar: Search + Filters + Sort - Minimal and Clean */}
+          <View style={{
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: 16,
             marginBottom: 16,
           }}>
-            Search & Filters
-          </Text>
-          
-          <View style={{ gap: 24 }}>
-            {/* Search Bar */}
-            <View style={{ gap: 8 }}>
-              <Text style={{
-                fontSize: 14,
-                lineHeight: 20,
-                fontWeight: '500',
-                color: '#e8edf4',
-              }}>
-                Search
-              </Text>
+            {/* Search Bar - Full Width */}
+            <View style={{
+              width: '100%',
+              marginBottom: (categorySlug === 'clothing' || categorySlug === 'clothes') ? 16 : 0,
+            }}>
+            {/* Search Input */}
+            <View style={{ width: '100%', position: 'relative' }}>
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: 6,
+                borderRadius: 8,
                 borderWidth: 1,
                 borderColor: 'rgba(139, 149, 168, 0.2)',
                 paddingHorizontal: 12,
-                height: 36,
+                height: 40,
               }}>
-                <Ionicons name="search" size={16} color="#8b95a8" style={{ marginRight: 8 }} />
+                <Ionicons name="search" size={18} color="#8b95a8" style={{ marginRight: 8 }} />
                 <TextInput
-                  placeholder="Search for products..."
+                  placeholder={
+                    categorySlug === 'clothing' || categorySlug === 'clothes'
+                      ? "Search clothing by brand, category"
+                      : "Search for products..."
+                  }
                   placeholderTextColor="rgba(139, 149, 168, 0.6)"
                   value={searchQuery}
                   onChangeText={(text) => {
@@ -550,7 +956,7 @@ export default function PatternALayout({
                   onSubmitEditing={() => {
                     console.log('🔍 TextInput onSubmitEditing, triggering search now');
                     if (searchQuery.trim()) {
-                      performSearch(searchQuery);
+                      performSearch(searchQuery, 1, false);
                     }
                   }}
                   style={{
@@ -559,8 +965,6 @@ export default function PatternALayout({
                     fontSize: 14,
                     lineHeight: 20,
                     paddingVertical: 0,
-                    paddingTop: 0,
-                    paddingBottom: 0,
                     includeFontPadding: false,
                     textAlignVertical: 'center',
                   }}
@@ -570,367 +974,586 @@ export default function PatternALayout({
                 )}
               </View>
             </View>
-            
-            {/* Subcategory Filter Pills (if subcategories exist) */}
-            {subcategories.length > 0 && (
-              <View style={{ gap: 8 }}>
+
+            {/* Clothing-specific filters: Gender and Size - Stacked Vertically */}
+            {(categorySlug === 'clothing' || categorySlug === 'clothes') && (
+              <View style={{
+                flexDirection: 'column',
+                gap: 16, // space-y-4 equivalent (16px vertical spacing)
+              }}>
+                {/* Gender Filter */}
+                <View style={{ 
+                  position: 'relative',
+                  width: '100%',
+                }}>
+                  <Text style={{
+                    color: '#e8edf4', // rgb(232, 237, 244) - white text
+                    fontSize: 14,
+                    marginBottom: 8,
+                    fontWeight: '500',
+                  }}>
+                    Gender
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setGenderDropdownVisible(!genderDropdownVisible);
+                      setSizeDropdownVisible(false); // Close size dropdown when opening gender
+                    }}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: genderDropdownVisible ? '#14b8a6' : 'rgba(139, 149, 168, 0.2)', // Teal border when active
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      minHeight: 44,
+                    }}
+                  >
+                    <Text style={{
+                      color: '#e8edf4',
+                      fontSize: 14,
+                      flex: 1,
+                    }} numberOfLines={1}>
+                      {selectedGender}
+                    </Text>
+                    <Ionicons 
+                      name={genderDropdownVisible ? "chevron-up" : "chevron-down"} 
+                      size={14} 
+                      color="#8b95a8" 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Gender Dropdown */}
+                  {genderDropdownVisible && (
+                    <View style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: 4,
+                      backgroundColor: 'rgba(21, 27, 40, 0.95)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: 'rgba(139, 149, 168, 0.2)',
+                      zIndex: 1000,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 8,
+                      elevation: 8,
+                      minWidth: 120,
+                    }}>
+                      {['All', "Men's", "Women's", "Kids"].map((option) => (
+                        <TouchableOpacity
+                          key={option}
+                          onPress={() => {
+                            setSelectedGender(option);
+                            setGenderDropdownVisible(false);
+                          }}
+                          style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: option !== "Kids" ? 1 : 0,
+                            borderBottomColor: 'rgba(139, 149, 168, 0.1)',
+                          }}
+                        >
+                          <Text style={{
+                            color: selectedGender === option ? '#14b8a6' : '#e8edf4',
+                            fontSize: 14,
+                            fontWeight: selectedGender === option ? '600' : '400',
+                          }}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* Size Filter */}
+                <View style={{ 
+                  position: 'relative',
+                  width: '100%',
+                }}>
+                  <Text style={{
+                    color: '#e8edf4', // rgb(232, 237, 244) - white text
+                    fontSize: 14,
+                    marginBottom: 8,
+                    fontWeight: '500',
+                  }}>
+                    Size
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSizeDropdownVisible(!sizeDropdownVisible);
+                      setGenderDropdownVisible(false); // Close gender dropdown when opening size
+                    }}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: sizeDropdownVisible ? '#14b8a6' : 'rgba(139, 149, 168, 0.2)', // Teal border when active
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      minHeight: 44,
+                    }}
+                  >
+                    <Text style={{
+                      color: '#e8edf4',
+                      fontSize: 14,
+                      flex: 1,
+                    }} numberOfLines={1}>
+                      {selectedSize}
+                    </Text>
+                    <Ionicons 
+                      name={sizeDropdownVisible ? "chevron-up" : "chevron-down"} 
+                      size={14} 
+                      color="#8b95a8" 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Size Dropdown */}
+                  {sizeDropdownVisible && (
+                    <View style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: 4,
+                      backgroundColor: 'rgba(21, 27, 40, 0.95)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: 'rgba(139, 149, 168, 0.2)',
+                      zIndex: 1000,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 8,
+                      elevation: 8,
+                      minWidth: 140,
+                    }}>
+                      {['All Sizes', 'XS', 'S', 'M', 'L', 'XL', 'XXL'].map((option) => (
+                        <TouchableOpacity
+                          key={option}
+                          onPress={() => {
+                            setSelectedSize(option);
+                            setSizeDropdownVisible(false);
+                          }}
+                          style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: option !== 'XXL' ? 1 : 0,
+                            borderBottomColor: 'rgba(139, 149, 168, 0.1)',
+                          }}
+                        >
+                          <Text style={{
+                            color: selectedSize === option ? '#14b8a6' : '#e8edf4',
+                            fontSize: 14,
+                            fontWeight: selectedSize === option ? '600' : '400',
+                          }}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            </View>
+
+            {/* Sort Button - Show in same row for non-clothing */}
+            {!(categorySlug === 'clothing' || categorySlug === 'clothes') && (
+              <View style={{ position: 'relative' }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setSortDropdownVisible(!sortDropdownVisible);
+                  }}
+                  activeOpacity={0.8}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: 'rgba(139, 149, 168, 0.2)',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    minWidth: 120,
+                  }}
+                >
+                <Ionicons name="swap-vertical-outline" size={16} color="#8b95a8" />
                 <Text style={{
-                  fontSize: 14,
-                  lineHeight: 20,
-                  fontWeight: '500',
                   color: '#e8edf4',
-                }}>
-                  Category
+                  fontSize: 14,
+                  flex: 1,
+                }} numberOfLines={1}>
+                  {selectedSort}
                 </Text>
+                <Ionicons 
+                  name={sortDropdownVisible ? "chevron-up" : "chevron-down"} 
+                  size={14} 
+                  color="#8b95a8" 
+                />
+              </TouchableOpacity>
+
+              {/* Sort Dropdown */}
+              {sortDropdownVisible && (
                 <View style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 8,
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  backgroundColor: 'rgba(21, 27, 40, 0.95)',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: 'rgba(139, 149, 168, 0.2)',
+                  zIndex: 1000,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 8,
+                  minWidth: 160,
                 }}>
-                  {subcategories
-                    .filter(subcat => subcat != null && subcat.id != null) // Filter out undefined
-                    .map((subcat) => {
-                    const emoji = subcategoryEmojiMap[subcat.id] || '📦';
-                    const isSelected = selectedSubcategory === subcat.id;
-                    
-                    return (
-                      <TouchableOpacity
-                        key={subcat.id}
-                        onPress={() => setSelectedSubcategory(isSelected ? null : subcat.id)}
-                        activeOpacity={0.8}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingHorizontal: 16,
-                          paddingVertical: 8,
-                          borderRadius: 20,
-                          backgroundColor: isSelected 
-                            ? 'rgba(59, 130, 246, 0.2)' // Lighter background when selected
-                            : 'rgba(255, 255, 255, 0.05)', // Dark background when unselected
-                          borderWidth: 1,
-                          borderColor: isSelected 
-                            ? 'rgba(52, 211, 235, 0.5)' // Cyan border when selected
-                            : 'rgba(139, 149, 168, 0.2)', // Subtle border when unselected
-                          gap: 6,
-                        }}
-                      >
-                        {/* Emoji Icon */}
-                        <Text style={{
-                          fontSize: 16,
-                          lineHeight: 16,
-                        }}>
-                          {emoji}
-                        </Text>
-                        
-                        {/* Category Name and Count */}
-                        <Text style={{
-                          color: isSelected ? '#60a5fa' : '#e8edf4',
-                          fontSize: 14,
-                          fontWeight: '500',
-                        }}>
-                          {subcat.name} {subcat.count !== undefined ? `(${subcat.count})` : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {SORT_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      onPress={() => {
+                        setSelectedSort(option);
+                        setSortDropdownVisible(false);
+                      }}
+                      activeOpacity={0.7}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderBottomWidth: option !== SORT_OPTIONS[SORT_OPTIONS.length - 1] ? 1 : 0,
+                        borderBottomColor: 'rgba(139, 149, 168, 0.1)',
+                        backgroundColor: selectedSort === option ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
+                      }}
+                    >
+                      <Text style={{
+                        color: selectedSort === option ? '#60a5fa' : '#e2e8f0',
+                        fontSize: 14,
+                        fontWeight: selectedSort === option ? '500' : '400',
+                      }}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              </View>
+            )}
+
+            {/* Sort Button Row for Clothing (below filters) */}
+            {(categorySlug === 'clothing' || categorySlug === 'clothes') && (
+              <View style={{
+                flexDirection: 'row',
+                gap: 12,
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                marginTop: 12,
+              }}>
+                <View style={{ position: 'relative' }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSortDropdownVisible(!sortDropdownVisible);
+                      setGenderDropdownVisible(false);
+                      setSizeDropdownVisible(false);
+                    }}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: 'rgba(139, 149, 168, 0.2)',
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      minWidth: 120,
+                    }}
+                  >
+                    <Ionicons name="swap-vertical-outline" size={16} color="#8b95a8" />
+                    <Text style={{
+                      color: '#e8edf4',
+                      fontSize: 14,
+                      flex: 1,
+                    }} numberOfLines={1}>
+                      {selectedSort}
+                    </Text>
+                    <Ionicons 
+                      name={sortDropdownVisible ? "chevron-up" : "chevron-down"} 
+                      size={14} 
+                      color="#8b95a8" 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Sort Dropdown */}
+                  {sortDropdownVisible && (
+                    <View style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: 4,
+                      backgroundColor: 'rgba(21, 27, 40, 0.95)',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: 'rgba(139, 149, 168, 0.2)',
+                      zIndex: 1000,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 8,
+                      elevation: 8,
+                      minWidth: 160,
+                    }}>
+                      {SORT_OPTIONS.map((option) => (
+                        <TouchableOpacity
+                          key={option}
+                          onPress={() => {
+                            setSelectedSort(option);
+                            setSortDropdownVisible(false);
+                          }}
+                          activeOpacity={0.7}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            borderBottomWidth: option !== SORT_OPTIONS[SORT_OPTIONS.length - 1] ? 1 : 0,
+                            borderBottomColor: 'rgba(139, 149, 168, 0.1)',
+                            backgroundColor: selectedSort === option ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
+                          }}
+                        >
+                          <Text style={{
+                            color: selectedSort === option ? '#60a5fa' : '#e2e8f0',
+                            fontSize: 14,
+                            fontWeight: selectedSort === option ? '500' : '400',
+                          }}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </View>
             )}
           </View>
-          
-          {/* Browse by Category Section - Electronics specific */}
-          {categorySlug === 'electronics' && subcategories.length > 0 && (
+
+          {/* Subcategory Section - Browse by Category */}
+          {displaySubcategories.length > 0 && (
             <View style={{
               backgroundColor: 'rgba(21, 27, 40, 0.6)',
-              borderRadius: 12,
+              borderRadius: 16,
               borderWidth: 1,
-              borderColor: 'rgba(52, 211, 235, 0.3)', // cyan-400/30
-              paddingHorizontal: 24,
-              paddingTop: 24,
-              paddingBottom: 24,
-              marginTop: 24,
-              overflow: 'hidden',
+              borderColor: 'rgba(139, 149, 168, 0.15)',
+              padding: 24,
+              marginBottom: 24,
+              gap: 24,
             }}>
-              {/* Gradient overlay for glass effect */}
-              <LinearGradient
-                colors={['rgba(6, 182, 212, 0.1)', 'rgba(139, 92, 246, 0.1)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                }}
-              />
-              
-              {/* Header */}
+              {/* Subcategory Header */}
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 24,
-                paddingBottom: 24,
-                borderBottomWidth: 1,
-                borderBottomColor: 'rgba(139, 149, 168, 0.15)',
+                gap: 8,
               }}>
                 <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: '#60a5fa',
+                }} />
+                <Text style={{
+                  fontSize: 18,
+                  lineHeight: 28,
+                  color: '#e2e8f0',
+                  fontWeight: '600',
                 }}>
-                  {/* Sparkles Icon */}
-                  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <Path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-                    <Path d="M20 3v4" />
-                    <Path d="M22 5h-4" />
-                    <Path d="M4 17v2" />
-                    <Path d="M5 18H3" />
-                  </Svg>
-                  
-                  {/* Title */}
-                  <Text style={{
-                    fontSize: 16,
-                    lineHeight: 16,
-                    fontWeight: '400',
-                    color: '#e8edf4',
-                  }}>
-                    Browse by Category
-                  </Text>
-                </View>
+                  Browse by Category
+                </Text>
               </View>
-              
-              {/* Category Grid */}
+
+              {/* Subcategory Grid - Responsive: 2 cols mobile, 3 cols md, 4 cols lg */}
               <View style={{
                 flexDirection: 'row',
                 flexWrap: 'wrap',
-                gap: 12,
+                gap: 12, // calc(var(--spacing) * 3) = 12px
               }}>
-                {subcategories.map((subcat) => {
-                  const emoji = subcategoryEmojiMap[subcat.id] || '📦';
+                {displaySubcategories.map((subcat) => {
                   const isSelected = selectedSubcategory === subcat.id;
+                  // Get icon from clothing subcategories or emoji map
+                  const icon = clothingSubcategories.find(s => s.id === subcat.id)?.icon || subcategoryEmojiMap[subcat.id] || '📦';
+                  
+                  // Calculate width for responsive grid: 2 cols mobile, 3 cols md, 4 cols lg
+                  // Using calc: (100% - gap) / columns
+                  const getCardWidth = () => {
+                    if (width >= 1024) {
+                      // 4 columns: (100% - 3 gaps of 12px) / 4
+                      return { width: 'calc((100% - 36px) / 4)' };
+                    }
+                    if (width >= 768) {
+                      // 3 columns: (100% - 2 gaps of 12px) / 3
+                      return { width: 'calc((100% - 24px) / 3)' };
+                    }
+                    // 2 columns: (100% - 1 gap of 12px) / 2
+                    return { width: 'calc((100% - 12px) / 2)' };
+                  };
+                  
+                  // React Native doesn't support calc(), so use percentage with flexBasis
+                  const getCardWidthRN = () => {
+                    if (width >= 1024) return { flexBasis: '23%', maxWidth: '23%' }; // 4 columns
+                    if (width >= 768) return { flexBasis: '31%', maxWidth: '31%' }; // 3 columns
+                    return { flexBasis: '47%', maxWidth: '47%' }; // 2 columns
+                  };
                   
                   return (
                     <TouchableOpacity
                       key={subcat.id}
-                      onPress={() => setSelectedSubcategory(isSelected ? null : subcat.id)}
-                      activeOpacity={0.9}
+                      onPress={() => {
+                        if (isSelected) {
+                          setSelectedSubcategory(null);
+                        } else {
+                          setSelectedSubcategory(subcat.id);
+                        }
+                      }}
+                      activeOpacity={0.8}
                       style={{
-                        width: '47%', // 2 columns with gap-3 (12px)
-                        backgroundColor: 'rgba(21, 27, 40, 0.6)',
-                        borderRadius: 6,
+                        ...getCardWidthRN(),
+                        backgroundColor: isSelected 
+                          ? 'rgba(6, 182, 212, 0.1)' 
+                          : 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: 8,
                         borderWidth: 1,
                         borderColor: isSelected 
-                          ? 'rgba(52, 211, 235, 0.5)' // cyan-400 when selected
-                          : 'rgba(255, 255, 255, 0.1)', // border-white/10
+                          ? 'rgba(6, 182, 212, 0.4)' 
+                          : 'rgba(255, 255, 255, 0.1)',
                         paddingVertical: 16,
                         paddingHorizontal: 16,
-                        flexDirection: 'column',
                         alignItems: 'center',
-                        gap: 12,
+                        justifyContent: 'center',
+                        gap: 12, // gap-3 equivalent
+                        minHeight: 103, // Match grid row height from specs (102.913px rounded)
                         position: 'relative',
                         overflow: 'hidden',
                       }}
                     >
-                      {/* Hover Overlay - Gradient (shows on press in React Native) */}
-                      <View
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          opacity: 0.1, // opacity-10 equivalent
-                        }}
-                      >
-                        <LinearGradient
-                          colors={['#60a5fa', '#818cf8']} // blue-400 to indigo-500
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={{
-                            flex: 1,
-                          }}
-                        />
-                      </View>
-                      
-                      {/* Icon - Emoji (text-3xl) */}
-                      <Text style={{
-                        fontSize: 30,
-                        lineHeight: 30,
-                        zIndex: 10,
+                      <Text style={{ 
+                        fontSize: 24,
+                        zIndex: 1,
                       }}>
-                        {emoji}
+                        {icon}
                       </Text>
-                      
-                      {/* Label (text-sm) */}
                       <Text style={{
+                        color: '#e8edf4', // text-slate-100 equivalent
                         fontSize: 14,
-                        lineHeight: 20,
-                        fontWeight: '500',
-                        color: '#f1f5f9', // text-slate-100
+                        fontWeight: isSelected ? '600' : '400',
                         textAlign: 'center',
-                        zIndex: 10,
+                        zIndex: 1,
                       }}>
                         {subcat.name}
                       </Text>
+                      {subcat.count !== undefined && (
+                        <Text style={{
+                          color: '#94a3b8',
+                          fontSize: 12,
+                          zIndex: 1,
+                        }}>
+                          {subcat.count} items
+                        </Text>
+                      )}
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
           )}
-          
-          {/* Filter by Retailer Section */}
-          <View style={{
-            backgroundColor: 'rgba(21, 27, 40, 0.6)',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: 'rgba(52, 211, 235, 0.3)', // cyan-400/30
-            overflow: 'hidden',
-            marginTop: 24,
-          }}>
-            {/* Gradient overlay for glass effect */}
-            <LinearGradient
-              colors={['rgba(6, 182, 212, 0.1)', 'rgba(139, 92, 246, 0.1)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: 0,
-                bottom: 0,
-              }}
-            />
-            
-            {/* Content Container */}
+
+          {/* Optional: Subcategory Filter (if subcategories exist) - Simple chip style */}
+          {displaySubcategories.length > 0 && (
             <View style={{
-              paddingHorizontal: 24,
-              paddingTop: 24,
-              paddingBottom: 24,
+              paddingHorizontal: 16,
+              marginBottom: 16,
             }}>
-              {/* Space-y-4 Container */}
-              <View style={{ gap: 16 }}>
-                {/* Header Row */}
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  height: 32,
-                }}>
-                  {/* Label */}
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={{ flexDirection: 'row' }}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                {/* All Categories Chip */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedSubcategory(null)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: !selectedSubcategory 
+                      ? 'rgba(96, 165, 250, 0.2)' 
+                      : 'rgba(255, 255, 255, 0.05)',
+                    borderWidth: 1,
+                    borderColor: !selectedSubcategory 
+                      ? 'rgba(96, 165, 250, 0.4)' 
+                      : 'rgba(139, 149, 168, 0.2)',
+                  }}
+                >
                   <Text style={{
-                    fontSize: 14,
-                    lineHeight: 14,
-                    fontWeight: '500',
-                    color: '#e2e8f0', // text-slate-200
+                    color: !selectedSubcategory ? '#60a5fa' : '#e8edf4',
+                    fontSize: 13,
+                    fontWeight: !selectedSubcategory ? '600' : '400',
                   }}>
-                    Filter by Retailer
+                    All
                   </Text>
-                  
-                  {/* Add Retailer Button */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: 32,
-                      paddingHorizontal: 12,
-                      gap: 8,
-                      backgroundColor: 'rgb(11, 15, 25)',
-                      borderWidth: 1,
-                      borderColor: 'rgba(59, 130, 246, 0.3)', // border-blue-500/30
-                      borderRadius: 6,
-                    }}
-                  >
-                    <Ionicons name="add" size={16} color="#e8edf4" />
-                    <Text style={{
-                      fontSize: 14,
-                      lineHeight: 20,
-                      fontWeight: '500',
-                      color: '#e8edf4',
-                    }}>
-                      Add Retailer
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                
-                {/* Retailer Checkboxes Grid */}
-                <View style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 16,
-                }}>
-                  {stores
-                    .filter(store => store != null && typeof store === 'string') // Filter out undefined/null stores
-                    .map((store) => {
-                    const isChecked = selectedStores.includes(store) || 
-                      (store === 'All Stores' && selectedStores.includes('All Stores'));
-                    
+                </TouchableOpacity>
+
+                {/* Subcategory Chips */}
+                {displaySubcategories
+                  .filter(subcat => subcat != null && subcat.id != null)
+                  .map((subcat) => {
+                    const isSelected = selectedSubcategory === subcat.id;
                     return (
                       <TouchableOpacity
-                        key={store}
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          if (store === 'All Stores') {
-                            setSelectedStores(['All Stores']);
-                          } else {
-                            setSelectedStores(prev => 
-                              prev.includes('All Stores') 
-                                ? [store]
-                                : prev.includes(store)
-                                ? prev.filter(s => s !== store)
-                                : [...prev, store]
-                            );
-                          }
-                        }}
+                        key={subcat.id}
+                        activeOpacity={0.8}
+                        onPress={() => setSelectedSubcategory(isSelected ? null : subcat.id)}
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 8,
+                          paddingHorizontal: 16,
+                          paddingVertical: 8,
+                          borderRadius: 20,
+                          backgroundColor: isSelected 
+                            ? 'rgba(96, 165, 250, 0.2)' 
+                            : 'rgba(255, 255, 255, 0.05)',
+                          borderWidth: 1,
+                          borderColor: isSelected 
+                            ? 'rgba(96, 165, 250, 0.4)' 
+                            : 'rgba(139, 149, 168, 0.2)',
                         }}
                       >
-                        {/* Checkbox Button */}
-                        <View style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 4,
-                          borderWidth: 1,
-                          borderColor: isChecked ? '#4f8ff7' : '#6B7280',
-                          backgroundColor: isChecked ? '#4f8ff7' : 'transparent',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                          {isChecked && (
-                            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                              <Path
-                                d="M20 6 9 17l-5-5"
-                                stroke="#FFFFFF"
-                                strokeWidth={2}
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </Svg>
-                          )}
-                        </View>
-                        
-                        {/* Label */}
                         <Text style={{
-                          fontSize: 14,
-                          lineHeight: 20,
-                          color: '#e2e8f0', // text-slate-200
+                          color: isSelected ? '#60a5fa' : '#e8edf4',
+                          fontSize: 13,
+                          fontWeight: isSelected ? '600' : '400',
                         }}>
-                          {store === 'All Stores' ? 'All Retailers' : store}
+                          {subcat.name}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
-                </View>
-              </View>
+              </ScrollView>
             </View>
-          </View>
+          )}
+
+          
           
           {/* Products Section */}
           <View style={{
@@ -945,11 +1568,11 @@ export default function PatternALayout({
               fontWeight: '600',
             }}>
               {selectedSubcategory 
-                ? subcategories.find(s => s.id === selectedSubcategory)?.name || 'Products'
+                ? displaySubcategories.find(s => s.id === selectedSubcategory)?.name || 'Products'
                 : 'Popular Items'}
             </Text>
             
-            {/* Product Cards */}
+            {/* Product Cards - Infinite Scroll for Subcategory, Grid for Others */}
             {isSearching && searchQuery.trim() ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <ActivityIndicator size="large" color="#60a5fa" />
@@ -957,97 +1580,182 @@ export default function PatternALayout({
                   Searching products...
                 </Text>
               </View>
-            ) : showProducts && productsToRender.length > 0 ? (
-              (() => {
-                // CRITICAL: Validate ProductCard before rendering
-                if (!ProductCard) {
-                  console.error('❌ ProductCard is undefined when trying to render products!', {
-                    ProductCard,
-                    type: typeof ProductCard,
-                    productsCount: productsToRender.length,
-                  });
-                  return (
-                    <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                      <Ionicons name="alert-circle" size={48} color="#EF4444" />
-                      <Text style={{ color: '#EF4444', marginTop: 12, fontSize: 14, textAlign: 'center' }}>
-                        Error: ProductCard component is undefined
-                      </Text>
-                      <Text style={{ color: '#94A3B8', marginTop: 4, fontSize: 12, textAlign: 'center' }}>
-                        Check ProductCard import and export
-                      </Text>
-                    </View>
-                  );
-                }
-                
-                if (typeof ProductCard !== 'function' && typeof ProductCard !== 'object') {
-                  console.error('❌ ProductCard is not a valid component!', {
-                    ProductCard,
-                    type: typeof ProductCard,
-                    constructor: ProductCard?.constructor?.name,
-                  });
-                  return (
-                    <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                      <Ionicons name="alert-circle" size={48} color="#EF4444" />
-                      <Text style={{ color: '#EF4444', marginTop: 12, fontSize: 14, textAlign: 'center' }}>
-                        Error: ProductCard is not a valid component
-                      </Text>
-                      <Text style={{ color: '#94A3B8', marginTop: 4, fontSize: 12, textAlign: 'center' }}>
-                        Type: {typeof ProductCard}
-                      </Text>
-                    </View>
-                  );
-                }
-                
-                // Render products with ProductCard
-                const renderedProducts = productsToRender
-                  .filter(product => product != null && product.id != null) // Extra safety check
-                  .map((product, index) => {
+            ) : selectedSubcategory && subcategoryProducts.length > 0 ? (
+              // Infinite Scroll for Subcategory Products (TikTok-style)
+              // Using View with onLayout to detect when user scrolls near bottom
+              <>
+                <View style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 16,
+                }}>
+                  {subcategoryProducts
+                    .filter(p => p && p.id && p.name) // Filter out invalid products
+                    .map((product, index) => {
                     try {
-                      // Log product data before rendering
-                      console.log('📦 Rendering product:', {
-                        id: product.id,
-                        name: product.name,
-                        image: product.image,
-                        hasImage: !!product.image,
-                        imageType: typeof product.image,
-                      });
+                      if (!product || !product.id || !product.name) return null;
+                      
+                      const columnWidth = width >= 1024 ? '23%' : width >= 768 ? '31%' : '47%';
+                      
+                      // Trigger loadMore when rendering last few items (TikTok-style)
+                      if (index === subcategoryProducts.length - 3 && hasMoreProducts && !isLoadingMore) {
+                        // Small delay to avoid multiple calls
+                        setTimeout(() => {
+                          loadMoreProducts();
+                        }, 100);
+                      }
                       
                       return (
-                        <ProductCard
-                          key={product.id || `product-${index}`}
-                          productName={product.name || 'Unnamed Product'}
-                          productImage={product.image || ''}
-                          category={product.category || 'Uncategorized'}
-                          storePrices={product.storePrices || []}
-                          maxSavings={product.maxSavings}
-                          bestPrice={product.bestPrice}
-                          bestPriceStore={product.bestPriceStore}
-                        />
+                        <View 
+                          key={`${product.id}-${index}`}
+                          style={{
+                            width: columnWidth,
+                            marginBottom: 16,
+                          }}
+                        >
+                          <ProductCardSimple
+                            product={product}
+                            onPress={() => {
+                              // Navigate to product comparison page
+                              console.log('Product pressed:', product.name);
+                            }}
+                          />
+                        </View>
                       );
                     } catch (error) {
-                      console.error(`❌ Error rendering ProductCard for product ${product.id}:`, error);
+                      console.error('Error rendering product card:', error);
                       return null;
                     }
-                  })
-                  .filter(Boolean); // Remove any null entries
+                  })}
+                </View>
                 
-                // If no products rendered, show error
-                if (renderedProducts.length === 0 && productsToRender.length > 0) {
-                  console.error('❌ All ProductCard renders failed!', {
-                    originalCount: productsToRender.length,
-                    renderedCount: renderedProducts.length,
-                  });
+                {/* Loading indicator at bottom */}
+                {isLoadingMore && (
+                  <View style={{ paddingVertical: 20, alignItems: 'center', width: '100%' }}>
+                    <ActivityIndicator size="small" color="#60a5fa" />
+                    <Text style={{ color: '#8b95a8', marginTop: 8, fontSize: 12 }}>
+                      Loading more...
+                    </Text>
+                  </View>
+                )}
+                
+                {/* End of list indicator */}
+                {!hasMoreProducts && subcategoryProducts.length > 0 && !isLoadingMore && (
+                  <View style={{ paddingVertical: 20, alignItems: 'center', width: '100%' }}>
+                    <Text style={{ color: '#8b95a8', fontSize: 14 }}>
+                      No more products
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : selectedSubcategory && isLoadingSubcategory ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#60a5fa" />
+                <Text style={{ color: '#8b95a8', marginTop: 12, fontSize: 14 }}>
+                  Loading {displaySubcategories.find(s => s.id === selectedSubcategory)?.name || 'products'}...
+                </Text>
+              </View>
+            ) : selectedSubcategory && subcategoryProducts.length === 0 && !isLoadingSubcategory ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <Ionicons name="search-outline" size={48} color="#8b95a8" />
+                <Text style={{ color: '#8b95a8', marginTop: 12, fontSize: 14 }}>
+                  No products found for {displaySubcategories.find(s => s.id === selectedSubcategory)?.name || 'this category'}
+                </Text>
+                <Text style={{ color: '#6b7280', marginTop: 4, fontSize: 12 }}>
+                  Try a different category or check back later
+                </Text>
+              </View>
+            ) : showProducts && productsToRender.length > 0 ? (
+              (() => {
+                // CRITICAL: Validate ProductCardSimple before rendering
+                if (!ProductCardSimple) {
+                  console.error('❌ ProductCardSimple is undefined!');
                   return (
                     <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                       <Ionicons name="alert-circle" size={48} color="#EF4444" />
                       <Text style={{ color: '#EF4444', marginTop: 12, fontSize: 14, textAlign: 'center' }}>
-                        Error: Failed to render products
+                        Error: ProductCardSimple component is undefined
                       </Text>
                     </View>
                   );
                 }
                 
-                return renderedProducts;
+                // Calculate grid columns: 1-2 on mobile, 3-4 on desktop
+                const getColumnWidth = () => {
+                  if (width >= 1024) return '23%'; // 4 columns
+                  if (width >= 768) return '31%';  // 3 columns
+                  if (width >= 480) return '47%';  // 2 columns
+                  return '100%'; // 1 column
+                };
+                
+                const columnWidth = getColumnWidth();
+                
+                // Render products in grid with ProductCardSimple
+                return (
+                  <View style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: 16,
+                  }}>
+                    {productsToRender
+                      .filter(product => product != null && product.id != null)
+                      .map((product, index) => {
+                        try {
+                          // Trigger infinite scroll when near bottom (for search results)
+                          const isSearching = hasSearched && searchQuery.trim();
+                          if (isSearching && index === productsToRender.length - 3 && hasMoreSearchResults && !isLoadingMoreSearch) {
+                            // Load more when rendering last 3 items
+                            setTimeout(() => loadMoreSearchResults(), 100);
+                          }
+                          
+                          // Calculate quick insights from store prices
+                          const storeCount = product.storePrices?.length || 0;
+                          const prices = product.storePrices?.map((sp: any) => 
+                            parseFloat(sp.price.replace('$', '')) || 0
+                          ) || [];
+                          const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+                          
+                          return (
+                            <View key={product.id || `product-${index}`} style={{ width: columnWidth }}>
+                              <ProductCardSimple
+                                productId={product.id}
+                                productName={product.name || 'Unnamed Product'}
+                                productImage={product.image || ''}
+                                category={product.category || 'Uncategorized'}
+                                categorySlug={categorySlug}
+                                storeCount={storeCount}
+                                minPrice={minPrice}
+                                fullProductData={product}
+                              />
+                            </View>
+                          );
+                        } catch (error) {
+                          console.error(`❌ Error rendering ProductCardSimple for product ${product.id}:`, error);
+                          return null;
+                        }
+                      })
+                      .filter(Boolean)}
+                    
+                    {/* Loading indicator for search results infinite scroll */}
+                    {hasSearched && searchQuery.trim() && isLoadingMoreSearch && (
+                      <View style={{ paddingVertical: 20, alignItems: 'center', width: '100%' }}>
+                        <ActivityIndicator size="small" color="#60a5fa" />
+                        <Text style={{ color: '#8b95a8', marginTop: 8, fontSize: 12 }}>
+                          Loading more products...
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {/* End of search results indicator */}
+                    {hasSearched && searchQuery.trim() && !hasMoreSearchResults && searchResults.length > 0 && !isLoadingMoreSearch && (
+                      <View style={{ paddingVertical: 20, alignItems: 'center', width: '100%' }}>
+                        <Text style={{ color: '#8b95a8', fontSize: 14 }}>
+                          Showing all {searchResults.length} results
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
               })()
             ) : hasSearched && searchQuery.trim() ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>

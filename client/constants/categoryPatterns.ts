@@ -62,3 +62,15 @@ export function getCategoryPattern(slug: string): CategoryPattern {
   return CATEGORY_PATTERN_MAP[slug] || 'A'; // Default to Pattern A
 }
 
+
+
+
+
+
+
+
+
+
+
+
+

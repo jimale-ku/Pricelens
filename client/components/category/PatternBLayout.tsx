@@ -11,7 +11,7 @@
  * - Savings calculator at bottom
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Pressable } from "react-native";
 import { useState, useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -38,6 +38,13 @@ interface PatternBLayoutProps {
   
   // Default search field values
   defaultSearchValues?: Record<string, string>;
+  
+  // Table column configuration
+  tableColumns?: Array<{
+    id: string;
+    label: string;
+    width?: string | number;
+  }>;
 }
 
 export default function PatternBLayout({
@@ -50,11 +57,13 @@ export default function PatternBLayout({
     { id: 'zipCode', label: 'ZIP Code', type: 'text', placeholder: 'Enter ZIP code' },
   ],
   defaultSearchValues = {},
+  tableColumns,
 }: PatternBLayoutProps) {
   const [searchValues, setSearchValues] = useState<Record<string, string>>(defaultSearchValues);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [dropdownVisible, setDropdownVisible] = useState<string | null>(null);
 
   // Reset state when category changes (without remounting component)
   useEffect(() => {
@@ -77,18 +86,170 @@ export default function PatternBLayout({
     setLoading(true);
     setHasSearched(true);
 
-    // TODO: Implement actual API call based on category
-    // For now, show placeholder
-    setTimeout(() => {
+    try {
+      // Build API URL based on category
+      let apiUrl: string;
+      
+      if (categorySlug === 'gas-stations') {
+        const { API_ENDPOINTS } = require('../../constants/api');
+        apiUrl = API_ENDPOINTS.services.gasStations(zipCode, searchValues.gasType);
+      } else if (categorySlug === 'gym') {
+        const { API_ENDPOINTS } = require('../../constants/api');
+        apiUrl = API_ENDPOINTS.services.gyms(zipCode, searchValues.membershipType);
+      } else if (categorySlug === 'hotels') {
+        const { API_ENDPOINTS } = require('../../constants/api');
+        apiUrl = API_ENDPOINTS.services.hotels(
+          searchValues.location || zipCode,
+          searchValues.checkIn,
+          searchValues.checkOut,
+          searchValues.guests ? parseInt(searchValues.guests) : undefined
+        );
+      } else {
+        // Generic search for other Pattern B categories
+        const { API_ENDPOINTS } = require('../../constants/api');
+        const searchParams: Record<string, string> = { zipCode };
+        // Add all other search values
+        Object.keys(searchValues).forEach(key => {
+          if (key !== 'zipCode' && searchValues[key]) {
+            searchParams[key] = searchValues[key];
+          }
+        });
+        apiUrl = API_ENDPOINTS.services.search(categorySlug, searchParams);
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setResults(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('❌ Search error:', error);
+      Alert.alert(
+        'Search Error',
+        error.message || 'Failed to search. Please try again.',
+        [{ text: 'OK' }]
+      );
       setResults([]);
+    } finally {
       setLoading(false);
-      Alert.alert('Coming Soon', `Search functionality for ${categoryName} will be available soon.`);
-    }, 1000);
+    }
   };
 
   const handleFieldChange = (fieldId: string, value: string) => {
     setSearchValues(prev => ({ ...prev, [fieldId]: value }));
+    setDropdownVisible(null);
   };
+
+  // Get default table columns based on category if not provided
+  const getDefaultTableColumns = (): Array<{ id: string; label: string }> => {
+    if (tableColumns && tableColumns.length > 0) return tableColumns;
+    
+    // Default columns based on category slug
+    const defaultColumns: Record<string, Array<{ id: string; label: string }>> = {
+      'gas-stations': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'station', label: 'Station' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'gym': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'gym', label: 'Gym' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price/Month' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'car-insurance': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'company', label: 'Company' },
+        { id: 'price', label: 'Price/Month' },
+        { id: 'coverage', label: 'Coverage' },
+      ],
+      'renters-insurance': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'company', label: 'Company' },
+        { id: 'price', label: 'Price/Month' },
+        { id: 'coverage', label: 'Coverage' },
+      ],
+      'tires': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'shop', label: 'Shop' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'mattresses': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'store', label: 'Store' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'oil-changes': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'shop', label: 'Shop' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'car-washes': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'location', label: 'Location' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price' },
+        { id: 'distance', label: 'Distance' },
+      ],
+      'rental-cars': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'company', label: 'Company' },
+        { id: 'price', label: 'Price/Day' },
+        { id: 'dates', label: 'Dates' },
+      ],
+      'hotels': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'hotel', label: 'Hotel' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price/Night' },
+        { id: 'rating', label: 'Rating' },
+      ],
+      'airfare': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'airline', label: 'Airline' },
+        { id: 'price', label: 'Price' },
+        { id: 'times', label: 'Times' },
+      ],
+      'storage': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'facility', label: 'Facility' },
+        { id: 'address', label: 'Address' },
+        { id: 'price', label: 'Price/Month' },
+        { id: 'size', label: 'Size' },
+      ],
+      'meal-kits': [
+        { id: 'rank', label: 'Rank' },
+        { id: 'service', label: 'Service' },
+        { id: 'price', label: 'Price/Week' },
+        { id: 'meals', label: 'Meals/Week' },
+      ],
+    };
+    
+    return defaultColumns[categorySlug] || [
+      { id: 'rank', label: 'Rank' },
+      { id: 'name', label: 'Name' },
+      { id: 'price', label: 'Price' },
+    ];
+  };
+
+  const columns = getDefaultTableColumns();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
@@ -243,19 +404,90 @@ export default function PatternBLayout({
                       }}
                     />
                   ) : field.type === 'select' && field.options ? (
-                    <View style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      borderWidth: 1,
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: 12,
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                    }}>
+                    <TouchableOpacity
+                      onPress={() => setDropdownVisible(dropdownVisible === field.id ? null : field.id)}
+                      activeOpacity={0.8}
+                      style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
                       <Text style={{ color: '#FFFFFF', fontSize: 16 }}>
                         {field.options.find(opt => opt.value === searchValues[field.id])?.label || field.placeholder || 'Select...'}
                       </Text>
-                    </View>
+                      <Ionicons 
+                        name={dropdownVisible === field.id ? "chevron-up" : "chevron-down"} 
+                        size={16} 
+                        color="#94A3B8" 
+                      />
+                    </TouchableOpacity>
                   ) : null}
+                  
+                  {/* Dropdown Modal */}
+                  {field.type === 'select' && dropdownVisible === field.id && field.options && (
+                    <Modal
+                      transparent={true}
+                      visible={true}
+                      animationType="fade"
+                      onRequestClose={() => setDropdownVisible(null)}
+                    >
+                      <Pressable
+                        style={{
+                          flex: 1,
+                          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                        onPress={() => setDropdownVisible(null)}
+                      >
+                        <View
+                          style={{
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: 'rgba(148, 163, 184, 0.2)',
+                            minWidth: 250,
+                            maxWidth: '90%',
+                            maxHeight: 400,
+                          }}
+                          onStartShouldSetResponder={() => true}
+                        >
+                          <ScrollView>
+                            {field.options.map((option, index) => (
+                              <TouchableOpacity
+                                key={option.value}
+                                onPress={() => handleFieldChange(field.id, option.value)}
+                                style={{
+                                  paddingHorizontal: 16,
+                                  paddingVertical: 12,
+                                  borderBottomWidth: index !== field.options!.length - 1 ? 1 : 0,
+                                  borderBottomColor: 'rgba(148, 163, 184, 0.1)',
+                                  backgroundColor: searchValues[field.id] === option.value 
+                                    ? 'rgba(96, 165, 250, 0.1)' 
+                                    : 'transparent',
+                                }}
+                              >
+                                <Text style={{
+                                  color: searchValues[field.id] === option.value ? '#60a5fa' : '#E2E8F0',
+                                  fontSize: 16,
+                                  fontWeight: searchValues[field.id] === option.value ? '500' : '400',
+                                }}>
+                                  {option.label}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      </Pressable>
+                    </Modal>
+                  )}
                 </View>
               ))}
             </View>
@@ -326,12 +558,116 @@ export default function PatternBLayout({
                     color: '#E2E8F0',
                     marginBottom: 16,
                   }}>
-                    Results
+                    Results ({results.length})
                   </Text>
-                  {/* Table will be rendered here when results are available */}
-                  <Text style={{ color: '#94A3B8', textAlign: 'center', paddingVertical: 20 }}>
-                    Results table coming soon...
-                  </Text>
+                  
+                  {/* Results Table */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{
+                      borderWidth: 1,
+                      borderColor: 'rgba(148, 163, 184, 0.2)',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                    }}>
+                      {/* Table Header */}
+                      <View style={{
+                        flexDirection: 'row',
+                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                        borderBottomWidth: 1,
+                        borderBottomColor: 'rgba(148, 163, 184, 0.2)',
+                      }}>
+                        {columns.map((col, index) => (
+                          <View
+                            key={col.id}
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 12,
+                              minWidth: 120,
+                              borderRightWidth: index !== columns.length - 1 ? 1 : 0,
+                              borderRightColor: 'rgba(148, 163, 184, 0.2)',
+                            }}
+                          >
+                            <Text style={{
+                              color: '#E2E8F0',
+                              fontSize: 14,
+                              fontWeight: '600',
+                            }}>
+                              {col.label}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                      
+                      {/* Table Rows */}
+                      {results.map((result, rowIndex) => (
+                        <View
+                          key={rowIndex}
+                          style={{
+                            flexDirection: 'row',
+                            backgroundColor: rowIndex % 2 === 0 
+                              ? 'rgba(255, 255, 255, 0.02)' 
+                              : 'transparent',
+                            borderBottomWidth: rowIndex !== results.length - 1 ? 1 : 0,
+                            borderBottomColor: 'rgba(148, 163, 184, 0.1)',
+                          }}
+                        >
+                          {columns.map((col, colIndex) => (
+                            <View
+                              key={col.id}
+                              style={{
+                                paddingHorizontal: 16,
+                                paddingVertical: 12,
+                                minWidth: 120,
+                                borderRightWidth: colIndex !== columns.length - 1 ? 1 : 0,
+                                borderRightColor: 'rgba(148, 163, 184, 0.1)',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}
+                            >
+                              {col.id === 'rank' && (
+                                <Text style={{
+                                  fontSize: 16,
+                                  fontWeight: '700',
+                                  color: rowIndex === 0 ? '#FBBF24' : '#94A3B8',
+                                }}>
+                                  {rowIndex === 0 ? '🏆' : `${rowIndex + 1}`}
+                                </Text>
+                              )}
+                              <Text style={{
+                                color: '#E2E8F0',
+                                fontSize: 14,
+                                flex: 1,
+                              }} numberOfLines={1}>
+                                {result[col.id] || '-'}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                  
+                  {/* Savings Calculator (if applicable) */}
+                  {results.length > 1 && results[0]?.price && results[results.length - 1]?.price && (
+                    <View style={{
+                      marginTop: 16,
+                      padding: 16,
+                      backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: 'rgba(96, 165, 250, 0.2)',
+                    }}>
+                      <Text style={{
+                        color: '#60a5fa',
+                        fontSize: 14,
+                        fontWeight: '600',
+                        textAlign: 'center',
+                      }}>
+                        💰 Save up to ${(parseFloat(results[results.length - 1].price.replace('$', '')) - parseFloat(results[0].price.replace('$', ''))).toFixed(2)} by choosing the best option!
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>

@@ -49,7 +49,8 @@ export type IconName =
   | 'list'
   | 'trophy'
   | 'person'
-  | 'bar-chart';
+  | 'bar-chart'
+  | 'disc';
 
 // Map icon names to Ionicons names
 const iconMap: Record<IconName, keyof typeof Ionicons.glyphMap> = {
@@ -96,6 +97,7 @@ const iconMap: Record<IconName, keyof typeof Ionicons.glyphMap> = {
   trophy: 'trophy-outline',
   person: 'person-outline',
   'bar-chart': 'bar-chart-outline',
+  disc: 'disc-outline',
 };
 
 export function getIconName(iconName: string): keyof typeof Ionicons.glyphMap {

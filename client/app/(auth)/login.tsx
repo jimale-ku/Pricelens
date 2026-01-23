@@ -14,6 +14,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import AppLogo from '../../components/AppLogo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -153,26 +154,27 @@ export default function LoginScreen() {
           <View style={{ maxWidth: 448, width: '100%', alignSelf: 'center', zIndex: 10 }}>
             {/* Logo and Branding */}
             <View style={{ alignItems: 'center', marginBottom: 32 }}>
-              <LinearGradient
-                colors={['#3B82F6', '#A855F7', '#06B6D4']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+              <View
                 style={{
                   width: 80,
                   height: 80,
-                  borderRadius: 16,
+                  borderRadius: 40, // Fully circular (half of 80)
+                  backgroundColor: '#0F172A', // Dark background
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginBottom: 16,
-                  shadowColor: '#3B82F6',
-                  shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 0.5,
-                  shadowRadius: 20,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
                   elevation: 10,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 255, 255, 0.1)', // Subtle border for professionalism
                 }}
               >
-                <EyeIcon size={40} color="#FFF" />
-              </LinearGradient>
+                {/* App Logo - Fills the circular div (90% of container for padding) */}
+                <AppLogo size={72} color="#FFFFFF" />
+              </View>
               
               <Text
                 style={{

@@ -56,6 +56,14 @@ export class CategoriesController {
     return this.categoriesService.findBySlug(slug);
   }
 
+  @Get('slug/:slug/subcategory-counts')
+  @ApiOperation({ summary: 'Get product counts by subcategory for a category' })
+  @ApiResponse({ status: 200, description: 'Returns subcategory counts' })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  getSubcategoryCounts(@Param('slug') slug: string) {
+    return this.categoriesService.getSubcategoryCountsBySlug(slug);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

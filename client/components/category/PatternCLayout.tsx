@@ -82,13 +82,38 @@ export default function PatternCLayout({
     setLoading(true);
     setHasSearched(true);
 
-    // TODO: Implement actual API call based on category
-    // For now, show placeholder
-    setTimeout(() => {
+    try {
+      const { API_ENDPOINTS } = require('../../constants/api');
+      const apiUrl = API_ENDPOINTS.services.providers(
+        categorySlug,
+        selectedServiceType,
+        zipCode
+      );
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setResults(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('❌ Search error:', error);
+      Alert.alert(
+        'Search Error',
+        error.message || 'Failed to search. Please try again.',
+        [{ text: 'OK' }]
+      );
       setResults([]);
+    } finally {
       setLoading(false);
-      Alert.alert('Coming Soon', `Search functionality for ${categoryName} will be available soon.`);
-    }, 1000);
+    }
   };
 
   return (
@@ -363,10 +388,188 @@ export default function PatternCLayout({
                   }}>
                     {results.length} Results Near You
                   </Text>
-                  {/* Service cards will be rendered here when results are available */}
-                  <Text style={{ color: '#94A3B8', textAlign: 'center', paddingVertical: 20 }}>
-                    Service listings coming soon...
-                  </Text>
+                  
+                  {/* Service Cards */}
+                  <View style={{ gap: 16 }}>
+                    {results.map((result, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: index === 0 
+                            ? 'rgba(251, 191, 36, 0.3)' 
+                            : 'rgba(148, 163, 184, 0.1)',
+                          padding: 20,
+                          position: 'relative',
+                        }}
+                      >
+                        {/* Best Deal Badge */}
+                        {index === 0 && (
+                          <View style={{
+                            position: 'absolute',
+                            top: 12,
+                            right: 12,
+                            backgroundColor: '#FBBF24',
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}>
+                            <Text style={{
+                              color: '#000000',
+                              fontSize: 12,
+                              fontWeight: '700',
+                            }}>
+                              🏆 Best Deal
+                            </Text>
+                          </View>
+                        )}
+                        
+                        {/* Business Name & Rating */}
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 12,
+                          paddingRight: index === 0 ? 80 : 0,
+                        }}>
+                          <Text style={{
+                            fontSize: 18,
+                            fontWeight: '700',
+                            color: '#E2E8F0',
+                          }}>
+                            {result.name || result.businessName || 'Business Name'}
+                          </Text>
+                          
+                          {/* Rating Stars */}
+                          {result.rating && (
+                            <View style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}>
+                              <Ionicons name="star" size={16} color="#FBBF24" />
+                              <Text style={{
+                                color: '#E2E8F0',
+                                fontSize: 14,
+                                fontWeight: '600',
+                              }}>
+                                {result.rating}
+                              </Text>
+                              {result.reviewCount && (
+                                <Text style={{
+                                  color: '#94A3B8',
+                                  fontSize: 12,
+                                }}>
+                                  ({result.reviewCount})
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                        
+                        {/* Address & Distance */}
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                          marginBottom: 12,
+                        }}>
+                          <Ionicons name="location" size={16} color="#94A3B8" />
+                          <Text style={{
+                            color: '#94A3B8',
+                            fontSize: 14,
+                            flex: 1,
+                          }} numberOfLines={1}>
+                            {result.address || 'Address not available'}
+                          </Text>
+                          {result.distance && (
+                            <Text style={{
+                              color: '#60a5fa',
+                              fontSize: 14,
+                              fontWeight: '500',
+                            }}>
+                              {result.distance}
+                            </Text>
+                          )}
+                        </View>
+                        
+                        {/* Hours */}
+                        {result.hours && (
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            marginBottom: 12,
+                          }}>
+                            <Ionicons name="time" size={16} color="#94A3B8" />
+                            <Text style={{
+                              color: '#94A3B8',
+                              fontSize: 14,
+                            }}>
+                              {result.hours}
+                            </Text>
+                          </View>
+                        )}
+                        
+                        {/* Pricing */}
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingTop: 12,
+                          borderTopWidth: 1,
+                          borderTopColor: 'rgba(148, 163, 184, 0.1)',
+                        }}>
+                          {result.priceRange ? (
+                            <Text style={{
+                              color: '#E2E8F0',
+                              fontSize: 16,
+                              fontWeight: '600',
+                            }}>
+                              {result.priceRange}
+                            </Text>
+                          ) : result.price ? (
+                            <Text style={{
+                              color: '#E2E8F0',
+                              fontSize: 16,
+                              fontWeight: '600',
+                            }}>
+                              {result.price}
+                            </Text>
+                          ) : (
+                            <Text style={{
+                              color: '#94A3B8',
+                              fontSize: 14,
+                            }}>
+                              Price varies
+                            </Text>
+                          )}
+                          
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={{
+                              backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                              borderRadius: 8,
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              borderWidth: 1,
+                              borderColor: 'rgba(96, 165, 250, 0.3)',
+                            }}
+                          >
+                            <Text style={{
+                              color: '#60a5fa',
+                              fontSize: 14,
+                              fontWeight: '600',
+                            }}>
+                              View Details
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               )}
             </View>

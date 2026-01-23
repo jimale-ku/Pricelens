@@ -1,8 +1,19 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { WalmartMockIntegration } from './services/walmart-mock.integration';
 import { AmazonMockIntegration } from './services/amazon-mock.integration';
 import { TargetMockIntegration } from './services/target-mock.integration';
 import { PriceApiService } from './services/priceapi.service';
+import { MultiStorePriceService } from './services/multi-store-price.service';
+import { MultiStoreScrapingService } from './services/multi-store-scraping.service';
+import { SerpAPIMapsService } from './services/serpapi-maps.service';
+import { FuelPriceService } from './services/fuel-price.service';
+import { ApifyGasPriceService } from './services/apify-gas-price.service';
+// Store Adapters
+import { AmazonAdapter } from './adapters/amazon/amazon.adapter';
+import { WalmartAdapter } from './adapters/walmart/walmart.adapter';
+import { EbayAdapter } from './adapters/ebay/ebay.adapter';
+import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
 
 /**
  * IntegrationsModule manages all external store API integrations.
@@ -12,19 +23,43 @@ import { PriceApiService } from './services/priceapi.service';
  * - Walmart: Budget-friendly, wide selection
  * - Amazon: Competitive tech pricing, fast shipping
  * - Target: Premium home decor, quality groceries
+ * 
+ * MULTI-STORE PRICE COMPARISON:
+ * - PricesAPI: Fetches prices from 100+ retailers (Walmart, Target, Costco, Best Buy, etc.)
  */
 @Module({
+  imports: [ConfigModule],
   providers: [
     WalmartMockIntegration,
     AmazonMockIntegration,
     TargetMockIntegration,
     PriceApiService,
+    MultiStorePriceService,
+    MultiStoreScrapingService,
+    SerpAPIMapsService,
+    FuelPriceService,
+    ApifyGasPriceService,
+    // Store Adapters
+    AmazonAdapter,
+    WalmartAdapter,
+    EbayAdapter,
+    BestBuyAdapter,
   ],
   exports: [
     WalmartMockIntegration,
     AmazonMockIntegration,
     TargetMockIntegration,
     PriceApiService,
+    MultiStorePriceService,
+    MultiStoreScrapingService,
+    SerpAPIMapsService,
+    FuelPriceService,
+    ApifyGasPriceService,
+    // Store Adapters
+    AmazonAdapter,
+    WalmartAdapter,
+    EbayAdapter,
+    BestBuyAdapter,
   ],
 })
 export class IntegrationsModule {}

@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import helmet from 'helmet';
+import { json } from 'express';
 
 console.log('🔵 main.ts file loaded');
 
@@ -16,6 +17,18 @@ async function bootstrap() {
 
     // Security: Helmet for HTTP headers
     app.use(helmet());
+
+    // Configure raw body for Stripe webhooks (must be before global JSON parser)
+    app.use(
+      '/api/subscriptions/webhook',
+      json({
+        verify: (req: any, res, buf) => {
+          if (Buffer.isBuffer(buf)) {
+            req.rawBody = Buffer.from(buf);
+          }
+        },
+      }),
+    );
 
     // Security: CORS configuration
     const corsOrigin = process.env.CORS_ORIGIN || '*';
@@ -66,7 +79,7 @@ async function bootstrap() {
     await app.listen(port, host);
     console.log(`🚀 Nest application successfully started on ${host}:${port}`);
     console.log(`📚 Swagger documentation available at http://localhost:${port}/api`);
-    console.log(`🌐 API accessible at http://192.168.201.104:${port}`);
+    console.log(`🌐 API accessible at http://192.168.201.105:${port}`);
   } catch (error) {
     console.error('❌ Error starting Nest application:', error);
     process.exit(1);

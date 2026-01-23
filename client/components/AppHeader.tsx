@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { ScrollView, View, Text, TouchableOpacity, Dimensions, InteractionManager } from "react-native";
+import AppLogo from './AppLogo';
 import { useRouter, usePathname, useSegments } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from '@expo/vector-icons';
@@ -147,26 +148,27 @@ export default function AppHeader() {
             onPress={() => router.push('/(tabs)')}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}
           >
-            {/* Logo with Gradient */}
-            <LinearGradient
-              colors={['#3B82F6', '#8B5CF6', '#22D3EE']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+            {/* Logo - Circular with Dark Background */}
+            <View
               style={{
                 height: 64,
                 width: 64,
-                borderRadius: 12,
+                borderRadius: 32, // Fully circular (half of 64)
+                backgroundColor: '#0F172A', // Dark background
                 alignItems: 'center',
                 justifyContent: 'center',
-                shadowColor: '#3B82F6',
+                shadowColor: '#000',
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.5,
+                shadowOpacity: 0.3,
                 shadowRadius: 8,
                 elevation: 8,
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.1)', // Subtle border for professionalism
               }}
             >
-              <Ionicons name="eye-outline" size={32} color="#ffffff" />
-            </LinearGradient>
+              {/* App Logo - Fills the circular div (90% of container for padding) */}
+              <AppLogo size={58} color="#FFFFFF" />
+            </View>
             
             {/* Title + Subtitle */}
             <View>

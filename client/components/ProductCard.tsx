@@ -1,9 +1,11 @@
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Polyline } from 'react-native-svg';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import StoreCard from './StoreCard';
+import { addItemToList } from '@/utils/listService';
+import ListPickerModal from './ListPickerModal';
 
 interface StorePrice {
   rank: number;
@@ -14,9 +16,11 @@ interface StorePrice {
   shippingInfo?: string;
   totalPrice?: number;
   savings?: number;
+  priceDifference?: string; // e.g., "+$0.04 more"
 }
 
 interface ProductCardProps {
+  productId?: string; // Product ID for adding to list
   productName: string;
   productImage: string;
   category: string;
@@ -27,6 +31,7 @@ interface ProductCardProps {
 }
 
 const ProductCardComponent = function ProductCard({ 
+  productId,
   productName, 
   productImage, 
   category, 
@@ -44,443 +49,100 @@ const ProductCardComponent = function ProductCard({
     startsWithHttp: productImage?.startsWith('http'),
   });
   
-  // Check if this is Electronics category to use special layout
-  const isElectronics = category.toLowerCase() === 'electronics';
-  
-  // Determine final image URL - reject placeholder URLs
+  // Determine final image URL - reject placeholder URLs and invalid URLs
   let finalImageUri = 'https://via.placeholder.com/96x96/1e2736/8b95a8?text=No+Image';
   
   if (productImage && typeof productImage === 'string') {
     const trimmed = productImage.trim();
     // Accept if it's a valid HTTP URL AND not a placeholder
-    // Check for common placeholder patterns
+    // Check for common placeholder patterns and invalid URLs
     const isPlaceholder = trimmed.includes('placeholder') || 
                          trimmed.includes('via.placeholder') ||
-                         trimmed === 'https://via.placeholder.com/96';
+                         trimmed === 'https://via.placeholder.com/96' ||
+                         trimmed.includes('example.com') ||
+                         trimmed === '' ||
+                         trimmed.length < 10;
     
-    if (trimmed.startsWith('http') && !isPlaceholder) {
+    // Check if it's a valid URL format
+    const isValidUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    
+    if (isValidUrl && !isPlaceholder) {
       finalImageUri = trimmed;
+    } else {
+      console.warn(`⚠️ Rejected invalid image URL: "${trimmed}" (isPlaceholder: ${isPlaceholder}, isValidUrl: ${isValidUrl})`);
     }
+  } else {
+    console.warn(`⚠️ Product image is invalid:`, { productImage, type: typeof productImage });
   }
   
   console.log('🖼️ Final image URI:', finalImageUri, 'from input:', productImage);
   
-  // Extract brand and model from product name (e.g., "Sony WH-1000XM5 Wireless..." -> ["Sony", "WH-1000XM5"])
-  const extractBrandModel = (name: string) => {
-    const parts = name.split(' ');
-    if (parts.length >= 2) {
-      return {
-        brand: parts[0],
-        model: parts[1],
-      };
+  // Debug: Log store prices
+  console.log('🏪 ProductCard storePrices:', {
+    count: storePrices?.length || 0,
+    stores: storePrices?.map(s => ({ name: s.storeName, price: s.price, rank: s.rank })),
+    isEmpty: !storePrices || storePrices.length === 0,
+  });
+  
+  // State for showing more stores
+  const [showAllStores, setShowAllStores] = useState(false);
+  
+  // State for image loading errors
+  const [imageError, setImageError] = useState(false);
+
+  // State for list picker modal
+  const [showListPicker, setShowListPicker] = useState(false);
+
+  // Handle "Add to List" button press
+  const handleAddToList = () => {
+    // Show list picker modal
+    setShowListPicker(true);
+  };
+
+  // Handle list selection from modal
+  const handleSelectList = (listId: string) => {
+    // Generate productId if not provided
+    const finalProductId = productId || `product-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const result = addItemToList(
+      finalProductId,
+      productName,
+      productImage,
+      category,
+      storePrices.map(sp => ({
+        rank: sp.rank,
+        storeName: sp.storeName,
+        price: sp.price,
+        storeImage: sp.storeImage,
+        isBestDeal: sp.isBestDeal,
+      })),
+      bestPrice,
+      bestPriceStore,
+      listId // Use selected list ID
+    );
+
+    if (result.success) {
+      Alert.alert('✅ Success', result.message);
+    } else {
+      Alert.alert('❌ Error', result.message);
     }
-    return { brand: '', model: '' };
   };
   
-  const { brand, model } = extractBrandModel(productName);
+  // Show 4 stores initially, or all if expanded
+  const initialStoreCount = 4;
+  const displayStores = showAllStores ? (storePrices || []) : (storePrices || []).slice(0, initialStoreCount);
+  const totalStoreCount = storePrices?.length || 0;
+  const hasMoreStores = totalStoreCount > initialStoreCount;
   
-  // Get first 6 stores for the 2x3 grid
-  const displayStores = storePrices.slice(0, 6);
-  const totalStoreCount = storePrices.length;
+  // Debug: Log display stores
+  console.log('🏪 Display stores:', {
+    showAll: showAllStores,
+    displayCount: displayStores.length,
+    totalCount: totalStoreCount,
+    hasMore: hasMoreStores,
+  });
   
-  if (isElectronics) {
-    // Electronics-specific layout matching Figma design
-    return (
-      <View style={{
-        backgroundColor: 'rgba(21, 27, 40, 0.6)',
-        borderRadius: 12, // rounded-xl
-        padding: 0,
-        borderWidth: 1,
-        borderColor: 'rgba(52, 211, 235, 0.3)', // cyan-400/30
-        overflow: 'hidden',
-        marginBottom: 24,
-      }}>
-        {/* Content Container - matches .px-6.pt-6.[&:last-child]:pb-6 */}
-        <View style={{
-          paddingHorizontal: 24, // px-6
-          paddingTop: 24, // pt-6
-          paddingBottom: 24, // pb-6 (will be applied as last child in list)
-          backgroundColor: 'transparent',
-        }}>
-          {/* Product Information Section - .flex.items-start.gap-4.mb-4 */}
-          <View style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 16, // gap-4 (calc(var(--spacing) * 4))
-            marginBottom: 16, // mb-4
-            margin: 0,
-            padding: 0,
-            borderWidth: 0,
-            backgroundColor: 'transparent',
-            position: 'relative',
-          }}>
-            {/* Product Image - .w-24.h-24.object-cover.rounded-lg.border-2.border-cyan-300 */}
-            <Image
-              source={{ uri: finalImageUri }}
-              style={{
-                width: 96, // w-24 (calc(var(--spacing) * 24))
-                height: 96, // h-24 (calc(var(--spacing) * 24))
-                borderRadius: 8, // rounded-lg (var(--radius))
-                borderWidth: 2, // border-2
-                borderColor: '#67e8f9', // border-cyan-300
-                resizeMode: 'cover', // object-cover
-                backgroundColor: '#1e2736', // Dark background for placeholder
-              }}
-              onError={(error) => {
-                console.log('❌ Image failed to load:', finalImageUri, error.nativeEvent.error);
-              }}
-              onLoad={() => {
-                console.log('✅ Image loaded successfully:', finalImageUri);
-              }}
-            />
-            
-            {/* Product Details - .flex-1 */}
-            <View style={{
-              flex: 1,
-              flexGrow: 1,
-              flexShrink: 1,
-              flexBasis: 0,
-              margin: 0,
-              padding: 0,
-              borderWidth: 0,
-              backgroundColor: 'transparent',
-            }}>
-              {/* Product Title - div with text node */}
-              <Text style={{
-                fontSize: 18,
-                fontWeight: '700',
-                color: 'rgb(255, 255, 255)',
-                lineHeight: 25.2, // 1.4 * 18px
-                margin: 0,
-                padding: 0,
-                textAlign: 'left',
-              }}>
-                {productName}
-              </Text>
-              
-              {/* Brand and Model Tags - .flex.flex-wrap.gap-2 */}
-              {brand && model && (
-                <View style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 8, // gap-2
-                  marginTop: 8,
-                }}>
-                  {/* Brand Tag - .inline-flex.items-center.justify-center.rounded-md.border.px-2.py-0.5.text-xs.font-medium... */}
-                  <View style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 6, // rounded-md (calc(var(--radius) - 2px))
-                    borderWidth: 1,
-                    borderColor: 'transparent',
-                    paddingHorizontal: 8, // px-2
-                    paddingVertical: 2, // py-0.5
-                    backgroundColor: 'rgb(30, 39, 54)', // bg-secondary
-                    width: 'auto', // w-fit
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                  }}>
-                    <Text style={{
-                      fontSize: 12, // text-xs
-                      lineHeight: 16,
-                      fontWeight: '500', // font-medium
-                      color: 'rgb(232, 237, 244)', // text-secondary-foreground
-                    }}>
-                      {brand}
-                    </Text>
-                  </View>
-                  {/* Model Tag */}
-                  <View style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 6, // rounded-md
-                    borderWidth: 1,
-                    borderColor: 'transparent',
-                    paddingHorizontal: 8, // px-2
-                    paddingVertical: 2, // py-0.5
-                    backgroundColor: 'rgb(30, 39, 54)', // bg-secondary
-                    width: 'auto', // w-fit
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                  }}>
-                    <Text style={{
-                      fontSize: 12, // text-xs
-                      lineHeight: 16,
-                      fontWeight: '500', // font-medium
-                      color: 'rgb(232, 237, 244)', // text-secondary-foreground
-                    }}>
-                      {model}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              
-              {/* Savings Callout - .bg-green-600.text-white */}
-              {maxSavings > 0 && (
-                <View style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6, // rounded-md (calc(var(--radius) - 2px))
-                  borderWidth: 1,
-                  borderColor: 'transparent',
-                  paddingHorizontal: 8, // px-2
-                  paddingVertical: 2, // py-0.5
-                  backgroundColor: '#16a34a', // bg-green-600
-                  width: 'auto', // w-fit
-                  flexShrink: 0,
-                  overflow: 'hidden',
-                  gap: 4, // gap-1
-                  marginTop: 8,
-                }}>
-                  <Text style={{
-                    fontSize: 12, // text-xs
-                    lineHeight: 16,
-                    fontWeight: '500', // font-medium
-                    color: 'rgb(255, 255, 255)', // text-white
-                  }}>
-                    Save up to ${maxSavings.toFixed(2)}
-                  </Text>
-                </View>
-              )}
-            </View>
-            
-            {/* Best Price Summary - Top Right */}
-            {bestPrice > 0 && bestPriceStore && (
-              <View style={{
-                alignItems: 'flex-end',
-                position: 'absolute',
-                top: 24,
-                right: 24,
-              }}>
-                <Text style={{
-                  color: '#9ca3af',
-                  fontSize: 12,
-                  marginBottom: 4,
-                }}>
-                  From
-                </Text>
-                <Text style={{
-                  color: '#10b981',
-                  fontSize: 28,
-                  fontWeight: '700',
-                  marginBottom: 4,
-                }}>
-                  ${bestPrice.toFixed(2)}
-                </Text>
-                <Text style={{
-                  color: '#9ca3af',
-                  fontSize: 12,
-                }}>
-                  {bestPriceStore}
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          {/* Retailer Price Comparison Grid - .grid.grid-cols-2.md:grid-cols-3.gap-3 */}
-          <View style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            margin: 0,
-            padding: 0,
-            borderWidth: 0,
-            backgroundColor: 'transparent',
-            justifyContent: 'space-between', // Distribute items evenly
-          }}>
-            {displayStores.map((store, index) => {
-              // For 2 columns: each card takes ~48% width, with gap between
-              const isEvenIndex = index % 2 === 0;
-              
-              return (
-              <View
-                key={store.rank}
-                style={{
-                  width: '48%', // 2 columns with gap
-                  marginBottom: index < displayStores.length - 2 ? 12 : 0, // gap-3 (12px) between rows
-                  padding: 12, // p-3 (12px all sides)
-                  borderRadius: 8, // rounded-lg (var(--radius))
-                  borderWidth: 2, // border-2
-                  borderColor: store.isBestDeal ? '#22d3ee' : '#d1d5db', // border-cyan-400 for best deal, border-gray-300 for others
-                  backgroundColor: store.isBestDeal ? 'transparent' : '#ffffff', // bg-white for regular cards
-                  overflow: 'hidden', // For gradient background
-                }}
-              >
-                {/* Gradient Background for Best Deal Card */}
-                {store.isBestDeal && (
-                  <LinearGradient
-                    colors={['#ecfeff', '#eff6ff']} // from-cyan-50 to-blue-50
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                    }}
-                  />
-                )}
-                
-                {/* Store Name - .flex.items-center.gap-2.mb-2 */}
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8, // gap-2
-                  marginBottom: 8, // mb-2
-                }}>
-                  <Text style={{
-                    fontSize: 14,
-                    fontWeight: '500',
-                    color: '#374151',
-                  }}>
-                    {store.storeName}
-                  </Text>
-                </View>
-                
-                {/* Price - .text-xl.font-bold.mb-1 */}
-                <Text style={{
-                  fontSize: 20, // text-xl
-                  fontWeight: '700', // font-bold
-                  color: store.isBestDeal ? '#10b981' : '#374151',
-                  marginBottom: 4, // mb-1
-                }}>
-                  {store.price}
-                </Text>
-                
-                {/* Shipping Info - .text-xs.text-gray-500 */}
-                <Text style={{
-                  fontSize: 12, // text-xs
-                  color: '#6b7280', // text-gray-500
-                  marginBottom: store.isBestDeal ? 8 : 0, // mb-2 for best deal (mt-2 for tag)
-                }}>
-                  {store.shippingInfo || 'Free Shipping'}
-                </Text>
-                
-                {/* Best Price Tag - .bg-green-500.text-white.text-xs.mt-2 */}
-                {store.isBestDeal && (
-                  <View style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#22c55e', // bg-green-500
-                    paddingHorizontal: 8, // px-2
-                    paddingVertical: 2, // py-0.5
-                    borderRadius: 6, // rounded-md
-                    borderWidth: 1,
-                    borderColor: 'transparent',
-                    width: 'auto', // w-fit
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    marginTop: 8, // mt-2
-                  }}>
-                    <Text style={{
-                      fontSize: 12, // text-xs
-                      fontWeight: '500', // font-medium
-                      color: 'rgb(255, 255, 255)', // text-white
-                    }}>
-                      Best Price
-                    </Text>
-                  </View>
-                )}
-              </View>
-              );
-            })}
-          </View>
-          
-          {/* Action Buttons */}
-          <View style={{
-            marginTop: 12, // mt-3
-            flexDirection: 'row',
-            gap: 8, // gap-2
-            flexWrap: 'wrap',
-          }}>
-          {/* View All Prices Button */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={{
-              flex: 1,
-              minWidth: 120,
-              height: 40,
-              backgroundColor: '#1e3a8a',
-              borderWidth: 1,
-              borderColor: '#3b82f6',
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{
-              color: '#ffffff',
-              fontSize: 14,
-              fontWeight: '600',
-            }}>
-              View All {totalStoreCount} Prices
-            </Text>
-          </TouchableOpacity>
-          
-          {/* Compare All Prices Button */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={{
-              flex: 1,
-              minWidth: 120,
-              height: 40,
-              backgroundColor: '#10b981',
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{
-              color: '#ffffff',
-              fontSize: 14,
-              fontWeight: '600',
-            }}>
-              Compare All Prices
-            </Text>
-          </TouchableOpacity>
-          
-          {/* Shop Best Price Button */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={{
-              flex: 1,
-              minWidth: 120,
-              height: 40,
-              backgroundColor: '#3b82f6',
-              borderWidth: 1,
-              borderColor: '#ffffff',
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              gap: 6,
-            }}
-          >
-            <Ionicons name="bag-outline" size={16} color="#ffffff" />
-            <Text style={{
-              color: '#ffffff',
-              fontSize: 14,
-              fontWeight: '600',
-            }}>
-              Shop Best Price
-            </Text>
-          </TouchableOpacity>
-        </View>
-        </View>
-      </View>
-    );
-  }
-  
-  // Original layout for other categories (Groceries, etc.)
+  // Standard layout matching the image design - used for ALL categories
   return (
     <View style={{
       backgroundColor: 'rgba(21, 27, 40, 0.6)',
@@ -491,13 +153,12 @@ const ProductCardComponent = function ProductCard({
       overflow: 'hidden',
       marginBottom: 16,
     }}>
-      {/* Card Header */}
+      {/* Product Header Section */}
       <View style={{
         paddingTop: 24,
         paddingRight: 24,
         paddingLeft: 24,
-        paddingBottom: 0,
-        gap: 6,
+        paddingBottom: 16,
         width: '100%',
       }}>
         <View style={{
@@ -506,83 +167,87 @@ const ProductCardComponent = function ProductCard({
           gap: 16,
         }}>
           {/* Product Image */}
-          <Image
-            source={{ uri: finalImageUri }}
-            style={{
+          {imageError || finalImageUri.includes('placeholder') ? (
+            <View style={{
               width: 96,
               height: 96,
               borderRadius: 8,
-              overflow: 'hidden',
-              backgroundColor: '#1e2736', // Dark background for placeholder
-            }}
-            resizeMode="cover"
-            onError={(error) => {
-              console.log('❌ Image failed to load:', finalImageUri, error.nativeEvent.error);
-            }}
-            onLoad={() => {
-              console.log('✅ Image loaded successfully:', finalImageUri);
-            }}
-          />
+              backgroundColor: '#1e2736',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>No Image</Text>
+            </View>
+          ) : (
+            <Image
+              source={{ uri: finalImageUri }}
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 8,
+                overflow: 'hidden',
+                backgroundColor: '#1e2736',
+              }}
+              resizeMode="cover"
+              onError={(error) => {
+                console.log('❌ Image failed to load:', finalImageUri, error.nativeEvent.error);
+                setImageError(true);
+              }}
+              onLoad={() => {
+                console.log('✅ Image loaded successfully:', finalImageUri);
+                setImageError(false);
+              }}
+            />
+          )}
           
           {/* Product Details */}
           <View style={{ flex: 1 }}>
             <Text style={{
               color: '#e8edf4',
               fontSize: 16,
-              lineHeight: 16,
-              fontWeight: '400',
-              margin: 0,
-              padding: 0,
+              lineHeight: 22,
+              fontWeight: '600',
+              marginBottom: 8,
             }}>
               {productName}
             </Text>
             
             {/* Category Badge */}
             <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
               paddingHorizontal: 8,
-              paddingVertical: 2,
-              marginTop: 8,
+              paddingVertical: 4,
+              marginBottom: 8,
               backgroundColor: '#1e2736',
               borderRadius: 6,
-              overflow: 'hidden',
               alignSelf: 'flex-start',
             }}>
               <Text style={{
                 color: '#e8edf4',
                 fontSize: 12,
-                lineHeight: 16,
                 fontWeight: '600',
               }}>
                 {category}
               </Text>
             </View>
             
-            {/* Add List Button */}
+            {/* Add to List Button */}
             <TouchableOpacity
               activeOpacity={0.8}
+              onPress={handleAddToList}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: 32,
                 paddingHorizontal: 10,
-                marginTop: 8,
                 borderRadius: 6,
                 gap: 6,
                 position: 'relative',
                 overflow: 'hidden',
-                shadowColor: '#3b82f6',
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: 0.3,
-                shadowRadius: 15,
-                elevation: 5,
               }}
             >
               <LinearGradient
-                colors={['#3b82f6', '#8b5cf6', '#06b6d4']}
+                colors={['#3b82f6', '#8b5cf6']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={{
@@ -593,49 +258,24 @@ const ProductCardComponent = function ProductCard({
                   bottom: 0,
                 }}
               />
-              <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 2 }} />
+              <Ionicons name="add" size={16} color="#ffffff" />
               <Text style={{
                 color: '#ffffff',
                 fontSize: 14,
-                lineHeight: 20,
                 fontWeight: '600',
               }}>
-                Add List
+                Add to List
               </Text>
             </TouchableOpacity>
-          </View>
         </View>
       </View>
 
-      {/* Card Content Section */}
-      <View style={{
-        paddingHorizontal: 24,
-        paddingBottom: 24,
-      }}>
-        {/* Price Comparison Header */}
+        {/* Sorting Indicator */}
         <View style={{
-          marginBottom: 16,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
           gap: 8,
-        }}>
-          <Text style={{
-            fontSize: 16,
-            lineHeight: 24,
-            fontWeight: '600',
-            color: '#f1f5f9',
-          }}>
-            Price Comparison
-          </Text>
-
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            margin: 0,
-            padding: 0,
+          marginTop: 16,
           }}>
             <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <Polyline points="22 17 13.5 8.5 8.5 13.5 2 7" />
@@ -643,37 +283,116 @@ const ProductCardComponent = function ProductCard({
             </Svg>
             <Text style={{
               fontSize: 14,
-              lineHeight: 20,
               fontWeight: '400',
               color: '#6b7280',
-              margin: 0,
-              padding: 0,
             }}>
               Sorted: Lowest to Highest
             </Text>
           </View>
         </View>
 
-        {/* Store Grid */}
+      {/* Store Cards Section - Vertical Stack */}
+      <View style={{
+        paddingHorizontal: 24,
+        paddingBottom: 24,
+      }}>
+        {/* Debug: Show if no stores */}
+        {(!storePrices || storePrices.length === 0) && (
+          <View style={{
+            padding: 16,
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: 8,
+            marginBottom: 12,
+          }}>
+            <Text style={{
+              color: '#ef4444',
+              fontSize: 14,
+              textAlign: 'center',
+            }}>
+              ⚠️ No store prices available for this product
+            </Text>
+          </View>
+        )}
+        
+        {/* Store Cards - Vertical Stack */}
+        {displayStores && displayStores.length > 0 && (
         <View style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: 16,
-          margin: 0,
-          padding: 0,
+            gap: 0,
         }}>
-          {storePrices.map((store, index) => (
+            {displayStores.map((store, index) => {
+              console.log(`🏪 Rendering StoreCard ${index + 1}:`, {
+                rank: store.rank,
+                name: store.storeName,
+                price: store.price,
+                isBestDeal: store.isBestDeal,
+              });
+              
+              return (
             <StoreCard
-              key={index}
+                  key={`store-${store.rank}-${index}`}
               rank={store.rank}
               storeName={store.storeName}
               price={store.price}
               storeImage={store.storeImage}
               isBestDeal={store.isBestDeal}
+                  priceDifference={store.priceDifference}
+              productUrl={store.productUrl}
             />
-          ))}
+              );
+            })}
         </View>
+        )}
+
+        {/* Show More Stores Button */}
+        {hasMoreStores && !showAllStores && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setShowAllStores(true)}
+            style={{
+              marginTop: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: '#3b82f6',
+            }}>
+              Show more stores
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Show Less Button */}
+        {showAllStores && hasMoreStores && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setShowAllStores(false)}
+            style={{
+              marginTop: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: '#3b82f6',
+            }}>
+              Show less
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* List Picker Modal */}
+      <ListPickerModal
+        visible={showListPicker}
+        onClose={() => setShowListPicker(false)}
+        onSelectList={handleSelectList}
+        category={category}
+      />
     </View>
   );
 };

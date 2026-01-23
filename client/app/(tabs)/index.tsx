@@ -7,8 +7,28 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from "react";
 import MaskedView from '@react-native-masked-view/masked-view';
+import { router } from 'expo-router';
 import AppHeader from "@/components/AppHeader";
 import { CATEGORY_LIST } from "@/constants/categories";
+import { getIconName } from '@/utils/iconMapper';
+
+// Helper to get gradient colors from iconColor
+function getGradientFromColor(color: string): string[] {
+  const colorMap: Record<string, string[]> = {
+    '#10B981': ['#10B981', '#059669'], // green
+    '#3B82F6': ['#3B82F6', '#2563EB'], // blue
+    '#F97316': ['#F97316', '#EA580C'], // orange
+    '#06B6D4': ['#06B6D4', '#0891B2'], // cyan
+    '#8B5CF6': ['#8B5CF6', '#7C3AED'], // purple
+    '#EF4444': ['#EF4444', '#DC2626'], // red
+    '#FBBF24': ['#FBBF24', '#F59E0B'], // yellow
+    '#EC4899': ['#EC4899', '#DB2777'], // pink
+    '#6B7280': ['#6B7280', '#4B5563'], // gray
+    '#A855F7': ['#A855F7', '#9333EA'], // violet
+  };
+  
+  return colorMap[color] || ['#3B82F6', '#8B5CF6']; // default blue-purple
+}
 
 export default function HomeScreen() {
   // Animation for floating icon
@@ -371,78 +391,125 @@ export default function HomeScreen() {
             flexWrap: 'wrap',
             gap: 16,
           }}>
-            {CATEGORY_LIST.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                activeOpacity={0.9}
-                style={{
-                  width: '100%',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Card Container */}
-                <View style={{
-                  position: 'relative',
-                  backgroundColor: 'rgba(21, 27, 40, 0.6)',
-                  borderRadius: 12,
-                  padding: 28,
-                  borderWidth: 1,
-                  borderColor: 'rgba(139, 149, 168, 0.15)',
-                  overflow: 'hidden',
-                }}>
-                  {/* Hover Gradient Overlay */}
-                  <View style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 0,
-                  }}>
-                    <LinearGradient
-                      colors={['rgba(59, 130, 246, 0)', 'rgba(139, 92, 246, 0)']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-
-                  {/* Card Content */}
+            {CATEGORY_LIST.map((category) => {
+              const iconGradient = getGradientFromColor(category.iconColor || '#3B82F6');
+              const iconName = getIconName(category.icon);
+              
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  activeOpacity={0.9}
+                  onPress={() => router.push(`/category/${category.slug}`)}
+                  style={{
+                    width: '100%',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Card Container */}
                   <View style={{
                     position: 'relative',
-                    zIndex: 10,
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    gap: 16,
+                    backgroundColor: 'rgba(21, 27, 40, 0.6)',
+                    borderRadius: 12,
+                    padding: 28,
+                    borderWidth: 1,
+                    borderColor: 'rgba(139, 149, 168, 0.15)',
+                    overflow: 'hidden',
                   }}>
-                    {/* Icon Container - no color yet */}
+                    {/* Hover Gradient Overlay */}
                     <View style={{
-                      width: 60,
-                      height: 60,
-                      padding: 16,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.25,
-                      shadowRadius: 8,
-                      elevation: 8,
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      zIndex: 0,
                     }}>
-                      {/* SVG Icon will go here - 28px */}
-                      <View style={{ width: 28, height: 28 }} />
+                      <LinearGradient
+                        colors={[`${iconGradient[0]}15`, `${iconGradient[1]}15`]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ flex: 1 }}
+                      />
                     </View>
 
-                    {/* Text Content Placeholder */}
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: 'white' }}>Title & description here</Text>
+                    {/* Card Content */}
+                    <View style={{
+                      position: 'relative',
+                      zIndex: 10,
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      gap: 16,
+                    }}>
+                      {/* Icon Container with Gradient Background */}
+                      <View style={{
+                        width: 60,
+                        height: 60,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        shadowColor: iconGradient[0],
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 8,
+                        elevation: 8,
+                      }}>
+                        <LinearGradient
+                          colors={iconGradient}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={{
+                            width: 60,
+                            height: 60,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name={iconName} size={28} color="#ffffff" />
+                        </LinearGradient>
+                      </View>
+
+                      {/* Text Content */}
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <Text style={{
+                            fontSize: 18,
+                            fontWeight: '600',
+                            color: '#E2E8F0',
+                            lineHeight: 24,
+                          }}>
+                            {category.name}
+                          </Text>
+                          {category.isNew && (
+                            <View style={{
+                              backgroundColor: '#3B82F6',
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}>
+                              <Text style={{
+                                fontSize: 10,
+                                fontWeight: '700',
+                                color: '#FFFFFF',
+                                textTransform: 'uppercase',
+                              }}>
+                                NEW
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{
+                          fontSize: 14,
+                          color: '#94A3B8',
+                          lineHeight: 20,
+                        }}>
+                          {category.description}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 

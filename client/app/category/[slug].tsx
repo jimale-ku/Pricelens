@@ -27,7 +27,7 @@ import { getIconName } from '@/utils/iconMapper';
 import { SAMPLE_PRODUCTS } from '@/constants/groceryData';
 import { SAMPLE_ELECTRONICS_PRODUCTS } from '@/constants/electronicsData';
 import { generateSampleProducts } from '@/utils/generateSampleProducts';
-import { fetchCategoryStores, fetchCategoryProducts } from '@/services/categoryService';
+import { fetchCategoryStores, fetchCategoryProducts, fetchSubcategoryCounts } from '@/services/categoryService';
 
 // CRITICAL: Validate all imports at module level with DETAILED error messages
 const validateComponent = (component: any, name: string) => {
@@ -190,6 +190,7 @@ function CategoryScreenContent() {
   // State for backend data
   const [backendStores, setBackendStores] = useState<string[]>([]);
   const [backendProducts, setBackendProducts] = useState<any[]>([]);
+  const [subcategoryCounts, setSubcategoryCounts] = useState<Record<string, number>>({});
   const [isLoadingBackend, setIsLoadingBackend] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
   
@@ -226,12 +227,21 @@ function CategoryScreenContent() {
     setIsLoadingBackend(true);
     setBackendError(null);
     
-    // Fetch data from backend
+    // Set a maximum loading time - if backend doesn't respond in 8 seconds, show page anyway
+    const maxLoadingTimeout = setTimeout(() => {
+      console.warn(`⏱️ Backend fetch timeout for ${slug}, showing page with fallback data`);
+      setIsLoadingBackend(false);
+    }, 8000);
+    
+    // Fetch data from backend (stores, products, and subcategory counts)
     Promise.all([
       fetchCategoryStores(slug),
       fetchCategoryProducts(slug, 6),
+      fetchSubcategoryCounts(slug),
     ])
-      .then(([stores, products]) => {
+      .then(([stores, products, counts]) => {
+        clearTimeout(maxLoadingTimeout);
+        
         // Format stores: ['All Stores', ...store names]
         // Filter out any undefined/null stores
         const formattedStores = stores.length > 0
@@ -240,12 +250,15 @@ function CategoryScreenContent() {
         
         setBackendStores(formattedStores);
         setBackendProducts(products);
+        setSubcategoryCounts(counts || {});
         setIsLoadingBackend(false);
       })
       .catch((error) => {
+        clearTimeout(maxLoadingTimeout);
+        
         // Silently handle network errors - app will use fallback data
         // Only log if it's not a network error (which is expected when backend is offline)
-        if (error.message && !error.message.includes('Network request failed')) {
+        if (error?.name !== 'AbortError' && error?.message && !error.message.includes('Network request failed') && !error.message.includes('aborted')) {
           console.error('Error fetching category data from backend:', error);
         }
         setBackendError(error.message);
@@ -314,20 +327,30 @@ function CategoryScreenContent() {
     return component;
   }, [categoryData?.icon]);
 
-  // Memoize subcategories mapping - ensure no undefined values
+  // Memoize subcategories mapping - merge with real counts from backend
   const mappedSubcategories = useMemo(() => {
     if (!categoryData || !categoryData.subcategories) return [];
     return categoryData.subcategories
       .filter(sub => sub && sub.id && sub.name) // Filter out invalid subcategories
-      .map(sub => ({
-        id: sub.id,
-        name: sub.name,
-        count: 'count' in sub ? sub.count : undefined,
-      }))
+      .map(sub => {
+        // Priority: Use real count from backend if available, otherwise use hardcoded count
+        const realCount = subcategoryCounts[sub.id] ?? subcategoryCounts[sub.name.toLowerCase()];
+        const count = realCount !== undefined ? realCount : ('count' in sub ? sub.count : undefined);
+        
+        return {
+          id: sub.id,
+          name: sub.name,
+          count: count,
+        };
+      })
       .filter(sub => sub.id && sub.name); // Final filter to ensure all have required fields
-  }, [categoryData?.subcategories]);
+  }, [categoryData?.subcategories, subcategoryCounts]);
 
-  // Use backend products if available, otherwise fallback to sample data - ensure no undefined
+  const useSampleData =
+    // Opt-in only (disabled by default). Set EXPO_PUBLIC_USE_SAMPLE_DATA=true to enable.
+    (process.env.EXPO_PUBLIC_USE_SAMPLE_DATA || '').toLowerCase() === 'true';
+
+  // Use backend products if available, otherwise optional (opt-in) sample data - ensure no undefined
   const defaultProducts = useMemo(() => {
     let products: any[] = [];
     
@@ -335,15 +358,14 @@ function CategoryScreenContent() {
     if (backendProducts && backendProducts.length > 0) {
       products = backendProducts;
     }
-    // Priority 2: Pre-defined sample products (for testing)
-    else if (slug === 'groceries') {
+    // Optional fallback: sample data ONLY when explicitly enabled
+    else if (useSampleData && slug === 'groceries') {
       products = SAMPLE_PRODUCTS || [];
     }
-    else if (slug === 'electronics') {
+    else if (useSampleData && slug === 'electronics') {
       products = SAMPLE_ELECTRONICS_PRODUCTS || [];
     }
-    // Priority 3: Auto-generated products (fallback if no backend data)
-    else if (pattern === 'A' && categoryData && categoryData.stores && categoryData.stores.length > 0 && stores && stores.length > 1) {
+    else if (useSampleData && pattern === 'A' && categoryData && categoryData.stores && categoryData.stores.length > 0 && stores && stores.length > 1) {
       products = generateSampleProducts(
         slug || categoryData.id || 'unknown',
         categoryData.name || 'Category',
@@ -364,9 +386,10 @@ function CategoryScreenContent() {
       }
       return true;
     });
-  }, [backendProducts, slug, pattern, categoryData?.id, categoryData?.name, categoryData?.stores, stores]);
+  }, [backendProducts, slug, pattern, categoryData?.id, categoryData?.name, categoryData?.stores, stores, useSampleData]);
 
-  // Show loading state while fetching from backend
+  // Show loading state while fetching from backend (with timeout)
+  // Only show loading for Pattern A, Pattern B and C don't need backend data initially
   if (isLoadingBackend && pattern === 'A') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
@@ -375,6 +398,9 @@ function CategoryScreenContent() {
           <ActivityIndicator size="large" color="#60a5fa" />
           <Text style={{ color: '#8b95a8', marginTop: 12, fontSize: 14 }}>
             Loading {categoryData.name}...
+          </Text>
+          <Text style={{ color: '#64748b', marginTop: 8, fontSize: 12 }}>
+            Using fallback data if backend unavailable
           </Text>
         </View>
       </SafeAreaView>
@@ -440,10 +466,12 @@ function CategoryScreenContent() {
           stores={safeStores}
           subcategories={safeSubcategories}
           defaultProducts={safeProducts}
+          categoryId={categoryData?.id}
         />
       );
     } else if (pattern === 'B') {
       // Pattern B: Direct Comparison Table
+      // Pattern B doesn't need backend data initially, so don't wait for it
       if (!PatternBLayout) {
         const errorMsg = `PatternBLayout is undefined! Type: ${typeof PatternBLayout}`;
         console.error('❌', errorMsg);
@@ -461,7 +489,7 @@ function CategoryScreenContent() {
         { id: 'zipCode', label: 'ZIP Code', type: 'text', placeholder: 'Enter ZIP code' },
       ];
       
-      // Add category-specific fields
+      // Add category-specific fields for all Pattern B categories
       if (slug === 'gas-stations') {
         searchFields.push({
           id: 'gasType',
@@ -485,6 +513,61 @@ function CategoryScreenContent() {
             { value: 'family', label: 'Family' },
           ],
         });
+      } else if (slug === 'car-insurance') {
+        searchFields.push(
+          {
+            id: 'carType',
+            label: 'Car Type',
+            type: 'select',
+            options: [
+              { value: 'sedan', label: 'Sedan' },
+              { value: 'suv', label: 'SUV' },
+              { value: 'truck', label: 'Truck' },
+              { value: 'coupe', label: 'Coupe' },
+            ],
+          },
+          {
+            id: 'coverage',
+            label: 'Coverage Level',
+            type: 'select',
+            options: [
+              { value: 'liability', label: 'Liability Only' },
+              { value: 'full', label: 'Full Coverage' },
+              { value: 'comprehensive', label: 'Comprehensive' },
+            ],
+          }
+        );
+      } else if (slug === 'renters-insurance') {
+        searchFields.push({
+          id: 'apartmentSize',
+          label: 'Apartment Size',
+          type: 'select',
+          options: [
+            { value: 'studio', label: 'Studio' },
+            { value: '1br', label: '1 Bedroom' },
+            { value: '2br', label: '2 Bedroom' },
+            { value: '3br', label: '3+ Bedroom' },
+          ],
+        });
+      } else if (slug === 'tires') {
+        searchFields.push(
+          {
+            id: 'tireSize',
+            label: 'Tire Size',
+            type: 'text',
+            placeholder: 'e.g., 205/55R16',
+          },
+          {
+            id: 'vehicle',
+            label: 'Vehicle Type',
+            type: 'select',
+            options: [
+              { value: 'sedan', label: 'Sedan' },
+              { value: 'suv', label: 'SUV' },
+              { value: 'truck', label: 'Truck' },
+            ],
+          }
+        );
       } else if (slug === 'mattresses') {
         searchFields.push({
           id: 'size',
@@ -497,10 +580,193 @@ function CategoryScreenContent() {
             { value: 'king', label: 'King' },
           ],
         });
-      } else if (slug === 'rental-cars' || slug === 'hotels' || slug === 'airfare') {
+      } else if (slug === 'oil-changes') {
+        searchFields.push({
+          id: 'vehicleType',
+          label: 'Vehicle Type',
+          type: 'select',
+          options: [
+            { value: 'sedan', label: 'Sedan' },
+            { value: 'suv', label: 'SUV' },
+            { value: 'truck', label: 'Truck' },
+            { value: 'luxury', label: 'Luxury' },
+          ],
+        });
+      } else if (slug === 'car-washes') {
+        searchFields.push({
+          id: 'serviceType',
+          label: 'Service Type',
+          type: 'select',
+          options: [
+            { value: 'basic', label: 'Basic Wash' },
+            { value: 'deluxe', label: 'Deluxe Wash' },
+            { value: 'full', label: 'Full Service' },
+          ],
+        });
+      } else if (slug === 'rental-cars') {
         searchFields = [
-          { id: 'location', label: 'Location', type: 'text', placeholder: 'Enter city or airport' },
-          { id: 'dates', label: 'Dates', type: 'text', placeholder: 'Select dates' },
+          { id: 'location', label: 'Pickup Location', type: 'text', placeholder: 'Enter city or airport' },
+          { id: 'dates', label: 'Rental Dates', type: 'text', placeholder: 'Select dates' },
+          {
+            id: 'carType',
+            label: 'Car Type',
+            type: 'select',
+            options: [
+              { value: 'economy', label: 'Economy' },
+              { value: 'compact', label: 'Compact' },
+              { value: 'suv', label: 'SUV' },
+              { value: 'luxury', label: 'Luxury' },
+            ],
+          },
+        ];
+      } else if (slug === 'hotels') {
+        searchFields = [
+          { id: 'location', label: 'Location', type: 'text', placeholder: 'Enter city or address' },
+          { id: 'checkIn', label: 'Check-in Date', type: 'text', placeholder: 'Select date' },
+          { id: 'checkOut', label: 'Check-out Date', type: 'text', placeholder: 'Select date' },
+          {
+            id: 'guests',
+            label: 'Guests',
+            type: 'select',
+            options: [
+              { value: '1', label: '1 Guest' },
+              { value: '2', label: '2 Guests' },
+              { value: '3', label: '3 Guests' },
+              { value: '4+', label: '4+ Guests' },
+            ],
+          },
+        ];
+      } else if (slug === 'airfare') {
+        searchFields = [
+          { id: 'origin', label: 'Origin', type: 'text', placeholder: 'Departure city/airport' },
+          { id: 'destination', label: 'Destination', type: 'text', placeholder: 'Arrival city/airport' },
+          { id: 'departDate', label: 'Departure Date', type: 'text', placeholder: 'Select date' },
+          { id: 'returnDate', label: 'Return Date', type: 'text', placeholder: 'Select date (optional)' },
+          {
+            id: 'passengers',
+            label: 'Passengers',
+            type: 'select',
+            options: [
+              { value: '1', label: '1 Passenger' },
+              { value: '2', label: '2 Passengers' },
+              { value: '3', label: '3 Passengers' },
+              { value: '4+', label: '4+ Passengers' },
+            ],
+          },
+        ];
+      } else if (slug === 'storage') {
+        searchFields.push({
+          id: 'unitSize',
+          label: 'Unit Size',
+          type: 'select',
+          options: [
+            { value: '5x5', label: '5x5 (25 sq ft)' },
+            { value: '5x10', label: '5x10 (50 sq ft)' },
+            { value: '10x10', label: '10x10 (100 sq ft)' },
+            { value: '10x20', label: '10x20 (200 sq ft)' },
+            { value: '10x30', label: '10x30 (300 sq ft)' },
+          ],
+        });
+      } else if (slug === 'meal-kits') {
+        searchFields.push({
+          id: 'mealType',
+          label: 'Meal Type',
+          type: 'select',
+          options: [
+            { value: 'vegetarian', label: 'Vegetarian' },
+            { value: 'meat', label: 'Meat & Fish' },
+            { value: 'vegan', label: 'Vegan' },
+            { value: 'family', label: 'Family-Friendly' },
+          ],
+        });
+      }
+      
+      // Define table columns based on category
+      let tableColumns: Array<{ id: string; label: string }> | undefined;
+      
+      if (slug === 'gas-stations') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'station', label: 'Station' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'gym') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'gym', label: 'Gym' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price/Month' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'car-insurance' || slug === 'renters-insurance') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'company', label: 'Company' },
+          { id: 'price', label: 'Price/Month' },
+          { id: 'coverage', label: 'Coverage' },
+        ];
+      } else if (slug === 'tires' || slug === 'oil-changes') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'shop', label: 'Shop' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'mattresses') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'store', label: 'Store' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'car-washes') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'location', label: 'Location' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'rental-cars') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'company', label: 'Company' },
+          { id: 'price', label: 'Price/Day' },
+          { id: 'dates', label: 'Dates' },
+        ];
+      } else if (slug === 'hotels') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'hotel', label: 'Hotel' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price/Night' },
+          { id: 'rating', label: 'Rating' },
+        ];
+      } else if (slug === 'airfare') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'airline', label: 'Airline' },
+          { id: 'price', label: 'Price' },
+          { id: 'times', label: 'Times' },
+        ];
+      } else if (slug === 'storage') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'facility', label: 'Facility' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price/Month' },
+          { id: 'size', label: 'Size' },
+        ];
+      } else if (slug === 'meal-kits') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'service', label: 'Service' },
+          { id: 'price', label: 'Price/Week' },
+          { id: 'meals', label: 'Meals/Week' },
         ];
       }
       
@@ -513,6 +779,7 @@ function CategoryScreenContent() {
             categoryIcon={categoryData?.icon || 'cube'}
             iconGradient={iconGradient || ['#3B82F6', '#8B5CF6']}
             searchFields={searchFields}
+            tableColumns={tableColumns}
           />
         );
       } catch (renderError) {
@@ -521,6 +788,7 @@ function CategoryScreenContent() {
       }
     } else if (pattern === 'C') {
       // Pattern C: Service Listings
+      // Pattern C doesn't need backend data initially, so don't wait for it
       if (!PatternCLayout) {
         const errorMsg = `PatternCLayout is undefined! Type: ${typeof PatternCLayout}`;
         console.error('❌', errorMsg);

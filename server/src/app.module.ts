@@ -20,6 +20,10 @@ import { AlertsModule } from './alerts/alerts.module';
 import { StoreLocationsModule } from './store-locations/store-locations.module';
 import { AdvertisementsModule } from './advertisements/advertisements.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
+import { ServicesModule } from './services/services.module';
+// Temporarily disabled - enable when ready to use subscriptions
+// import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+// import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 // import { JobsModule } from './jobs/jobs.module';
 // import { HealthModule } from './health/health.module';
 
@@ -63,6 +67,8 @@ import { UserPreferencesModule } from './user-preferences/user-preferences.modul
     StoreLocationsModule,
     AdvertisementsModule,
     UserPreferencesModule,
+    ServicesModule,
+    // SubscriptionsModule, // Temporarily disabled - enable when ready
     // JobsModule, // Disabled - requires Redis
     // HealthModule, // Disabled - requires JobsModule
   ],

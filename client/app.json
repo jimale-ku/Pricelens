@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/newLogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B1020"
     },
@@ -13,14 +14,19 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/logo.png"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0B1020"
-      }
+      },
+      "icon": "./assets/logo.png"
     },
-    "web": {},
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
     "plugins": [
       "expo-asset",
       "expo-font"

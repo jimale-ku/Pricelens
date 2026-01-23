@@ -17,6 +17,7 @@ interface BackendProduct {
   name: string;
   image?: string;
   images?: string[]; // Backend returns images as array
+  subcategory?: string | null; // Subcategory field from backend
   category: {
     id: string;
     name: string;
@@ -54,6 +55,7 @@ interface CompareMultiStoreResponse {
     isBestPrice: boolean;
     inStock?: boolean;
     currency?: string;
+    productUrl?: string; // Direct URL to the product page
   }>;
   metadata?: {
     source: string;
@@ -73,6 +75,8 @@ interface FrontendStorePrice {
   shippingInfo?: string;
   totalPrice?: number;
   savings?: number;
+  priceDifference?: string; // e.g., "+$0.04 more"
+  productUrl?: string; // URL to the product on the store's website
 }
 
 interface FrontendProduct {
@@ -80,6 +84,8 @@ interface FrontendProduct {
   name: string;
   image: string;
   category: string;
+  categorySlug?: string;
+  subcategory?: string | null; // Subcategory field for filtering
   storePrices: FrontendStorePrice[];
   maxSavings?: number;
   bestPrice?: number;
@@ -90,24 +96,114 @@ interface FrontendProduct {
  * Transform backend product to frontend format (for regular search endpoint)
  * Handles both /products/search and /products/popular endpoints
  */
-export function transformProduct(backendProduct: BackendProduct): FrontendProduct {
+export function transformProduct(backendProduct: BackendProduct): FrontendProduct | null {
+  // EXCLUDE TEST PRODUCTS - Filter out products with "Test Product" in the name
+  const productName = (backendProduct.name || '').toLowerCase();
+  if (productName.includes('test product')) {
+    console.warn(`🚫 Filtering out test product: "${backendProduct.name}"`);
+    return null;
+  }
+  
+  // Filter out products without valid images
+  const hasValidImage = (() => {
+    if (backendProduct.images && Array.isArray(backendProduct.images) && backendProduct.images.length > 0) {
+      return backendProduct.images.some((img: string) => 
+        img && typeof img === 'string' && 
+        img.trim().length > 0 && 
+        (img.startsWith('http://') || img.startsWith('https://')) &&
+        !img.includes('placeholder') &&
+        !img.includes('via.placeholder') &&
+        !img.includes('example.com') // Exclude example.com URLs (test images)
+      );
+    }
+    return false;
+  })();
+
+  // Return null if no valid image (will be filtered out)
+  if (!hasValidImage) {
+    console.warn(`⚠️ Filtering out product "${backendProduct.name}" - no valid image`);
+    return null;
+  }
+  
+  // Extract the valid image URL
+  let productImage: string = '';
+  if (backendProduct.images && Array.isArray(backendProduct.images) && backendProduct.images.length > 0) {
+    const validImages = backendProduct.images.filter((img: string) => 
+      img && typeof img === 'string' && 
+      img.trim().length > 0 && 
+      (img.startsWith('http://') || img.startsWith('https://')) &&
+      !img.includes('placeholder') &&
+      !img.includes('via.placeholder') &&
+      !img.includes('example.com') // Exclude example.com URLs (test images)
+    );
+    if (validImages.length > 0) {
+      productImage = validImages[0];
+    }
+  } else if (typeof backendProduct.images === 'string' && backendProduct.images.trim().length > 0) {
+    const trimmed = backendProduct.images.trim();
+    if (trimmed.startsWith('http') && !trimmed.includes('placeholder') && !trimmed.includes('example.com')) {
+      productImage = trimmed;
+    }
+  }
+  
+  // Fallback to image field
+  if (!productImage && backendProduct.image) {
+    const trimmed = backendProduct.image.trim();
+    if (trimmed.startsWith('http') && !trimmed.includes('placeholder') && !trimmed.includes('example.com')) {
+      productImage = trimmed;
+    }
+  }
+  
   // Handle missing prices array
   const prices = backendProduct.prices || [];
+
+  const toNumberOrNull = (val: any): number | null => {
+    if (val == null) return null;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : null;
+    if (typeof val === 'string') {
+      const n = Number.parseFloat(val);
+      return Number.isFinite(n) ? n : null;
+    }
+    // Prisma Decimal (or similar) support
+    if (typeof val?.toNumber === 'function') {
+      const n = val.toNumber();
+      return Number.isFinite(n) ? n : null;
+    }
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  };
   
-  // Sort prices by price value (ascending)
-  const sortedPrices = [...prices].sort((a, b) => a.price - b.price);
+  console.log(`🔄 Transforming product "${backendProduct.name}":`, {
+    pricesCount: prices.length,
+    prices: prices.map(p => ({ store: p.store?.name, price: p.price })),
+  });
+  
+  // Normalize & filter out invalid prices first, then sort by price value (ascending)
+  const normalizedPrices = prices
+    .map((p: any) => {
+      const n = toNumberOrNull(p?.price);
+      return { ...p, __priceNumber: n };
+    })
+    .filter((p: any) => typeof p.__priceNumber === 'number' && p.__priceNumber > 0);
+  
+  console.log(`✅ Valid prices: ${normalizedPrices.length} out of ${prices.length}`);
+  
+  const sortedPrices = [...normalizedPrices].sort((a: any, b: any) => a.__priceNumber - b.__priceNumber);
   
   // Get the lowest price for best deal indicator
-  const lowestPrice = sortedPrices.length > 0 ? sortedPrices[0].price : 0;
-  const highestPrice = sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1].price : 0;
+  const lowestPrice = sortedPrices.length > 0 ? sortedPrices[0].__priceNumber : 0;
+  const highestPrice = sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1].__priceNumber : 0;
   const maxSavings = highestPrice - lowestPrice;
   
   // Transform prices to frontend format
-  const storePrices: FrontendStorePrice[] = sortedPrices.map((price, index) => {
-    const isBestDeal = price.price === lowestPrice && lowestPrice > 0;
+  // sortedPrices is already filtered and sorted, so we can use it directly
+  let storePrices: FrontendStorePrice[] = sortedPrices.map((price, index) => {
+    const priceNumber = price.__priceNumber as number;
+    const isBestDeal = priceNumber === lowestPrice && lowestPrice > 0;
     
     // Format price as string (e.g., "$4.99" or "$4.99/lb")
-    const formattedPrice = `$${price.price.toFixed(2)}`;
+    // price.price is guaranteed to be a valid number due to filter above
+    const formattedPrice = `$${priceNumber.toFixed(2)}`;
     
     // Use store logo if available, otherwise use Clearbit Logo API
     const storeName = price.store?.name || 'Unknown Store';
@@ -115,38 +211,39 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
       `https://logo.clearbit.com/${storeName.toLowerCase().replace(/\s+/g, '').replace(/&/g, 'and')}.com` ||
       'https://via.placeholder.com/40';
     
+    // Calculate price difference for non-best-deal stores
+    let priceDifference: string | undefined;
+    if (!isBestDeal && lowestPrice > 0) {
+      const diff = priceNumber - lowestPrice;
+      if (diff > 0) {
+        priceDifference = `+$${diff.toFixed(2)} more`;
+      }
+    }
+    
     return {
       rank: index + 1,
       storeName,
       price: formattedPrice,
       storeImage,
       isBestDeal,
+      totalPrice: priceNumber,
+      priceDifference,
+      productUrl: (price as any).productUrl || (price.store as any)?.url || (price.store as any)?.websiteUrl, // Include product URL if available
     };
   });
   
-  // Extract image - backend returns images[] array, use first image
-  // Handle both array and string formats
-  let productImage = 'https://via.placeholder.com/96';
-  
-  if (backendProduct.images) {
-    if (Array.isArray(backendProduct.images) && backendProduct.images.length > 0) {
-      // Filter out empty strings and invalid URLs
-      const validImages = backendProduct.images.filter(img => 
-        img && typeof img === 'string' && img.length > 0 && img.startsWith('http')
-      );
-      if (validImages.length > 0) {
-        productImage = validImages[0];
-      }
-    } else if (typeof backendProduct.images === 'string' && backendProduct.images.length > 0) {
-      productImage = backendProduct.images;
-    }
+  // CRITICAL: Do NOT generate fake prices - only show products with REAL prices from stores
+  // If no prices from backend, return null to filter out this product (it's not ready for display)
+  if (storePrices.length === 0) {
+    console.warn(`🚫 Product "${backendProduct.name}" has no real prices from stores - filtering out (this is a production app, no fake prices)`);
+    return null; // Filter out products without real prices
   }
   
-  // Fallback to image field if images array is empty
-  if (productImage === 'https://via.placeholder.com/96' && backendProduct.image) {
-    if (typeof backendProduct.image === 'string' && backendProduct.image.startsWith('http')) {
-      productImage = backendProduct.image;
-    }
+  // productImage is already extracted above (lines 119-145)
+  // If we got here, hasValidImage is true, so productImage should be set
+  if (!productImage) {
+    console.warn(`⚠️ Product "${backendProduct.name}" has valid image check passed but no image URL extracted`);
+    return null;
   }
   
   console.log(`🖼️ Product image for ${backendProduct.name}:`, productImage);
@@ -156,6 +253,8 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
     name: backendProduct.name || 'Unnamed Product',
     image: productImage, // Use first image from images array
     category: backendProduct.category?.name || 'Uncategorized',
+    categorySlug: backendProduct.category?.slug,
+    subcategory: backendProduct.subcategory || null, // Include subcategory for filtering
     storePrices,
     maxSavings: backendProduct.savings || maxSavings,
     bestPrice: lowestPrice,
@@ -167,7 +266,9 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
  * Transform array of backend products to frontend format (for regular search endpoint)
  */
 export function transformProducts(backendProducts: BackendProduct[]): FrontendProduct[] {
-  return backendProducts.map(transformProduct);
+  return backendProducts
+    .map(transformProduct)
+    .filter((p): p is FrontendProduct => p !== null && p !== undefined);
 }
 
 /**
@@ -181,9 +282,21 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
   
   const { product, prices } = response;
   
+  // Store product name for URL generation fallback (clean it for URL encoding)
+  const productName = (product.name || '').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+  
   // Transform prices array to frontend format
-  const storePrices: FrontendStorePrice[] = prices.map((price) => {
+  // Filter out prices with invalid price values first
+  const validPrices = prices.filter(p => 
+    p && 
+    typeof p.price === 'number' && 
+    !isNaN(p.price) && 
+    p.price > 0
+  );
+  
+  const storePrices: FrontendStorePrice[] = validPrices.map((price) => {
     // Format price as string
+    // price.price is guaranteed to be a valid number due to filter above
     const formattedPrice = `$${price.price.toFixed(2)}`;
     
     // Use store logo if available, otherwise generate from store name using Clearbit
@@ -205,15 +318,63 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
       shippingInfo = 'In-Store Only';
     }
     
+    // Calculate price difference for non-best-price stores
+    let priceDifference: string | undefined;
+    if (!price.isBestPrice && validPrices.length > 0) {
+      const bestPrice = validPrices.find(p => p.isBestPrice)?.price || validPrices[0]?.price || 0;
+      if (bestPrice > 0 && price.price > bestPrice) {
+        const diff = price.price - bestPrice;
+        priceDifference = `+$${diff.toFixed(2)} more`;
+      }
+    }
+    
+    // For now, use store homepage URL (simpler and always works)
+    // Later, we can use specific product URLs when available
+    let productUrl = price.productUrl || 
+                     price.store?.url || 
+                     price.store?.websiteUrl ||
+                     undefined;
+    
+    // If still no URL, generate store homepage based on store name
+    if (!productUrl) {
+      const storeLower = storeName.toLowerCase();
+      if (storeLower.includes('amazon')) {
+        productUrl = 'https://www.amazon.com';
+      } else if (storeLower.includes('walmart')) {
+        productUrl = 'https://www.walmart.com';
+      } else if (storeLower.includes('target')) {
+        productUrl = 'https://www.target.com';
+      } else if (storeLower.includes('best buy') || storeLower.includes('bestbuy')) {
+        productUrl = 'https://www.bestbuy.com';
+      } else if (storeLower.includes('costco')) {
+        productUrl = 'https://www.costco.com';
+      } else if (storeLower.includes('ebay')) {
+        productUrl = 'https://www.ebay.com';
+      } else if (storeLower.includes('home depot') || storeLower.includes('homedepot')) {
+        productUrl = 'https://www.homedepot.com';
+      } else if (storeLower.includes('office depot') || storeLower.includes('officedepot')) {
+        productUrl = 'https://www.officedepot.com';
+      } else {
+        // Generic fallback
+        productUrl = `https://www.${storeName.toLowerCase().replace(/\s+/g, '').replace(/&/g, 'and')}.com`;
+      }
+      
+      console.log(`🔗 Generated store homepage URL for ${storeName}: ${productUrl}`);
+    }
+    
+    console.log(`🔗 Transform price for ${price.store.name}: Using URL: ${productUrl}`);
+    
     return {
       rank: price.rank,
       storeName: price.store.name,
       price: formattedPrice,
       storeImage,
       isBestDeal: price.isBestPrice,
+      productUrl: productUrl, // Use product URL or store URL as fallback
       shippingInfo,
       totalPrice: price.totalPrice,
       savings: price.savings,
+      priceDifference,
     };
   });
   

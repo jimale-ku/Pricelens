@@ -15,14 +15,34 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string(),
   GOOGLE_CALLBACK_URL: z.string().url(),
 
-  AMAZON_ACCESS_KEY: z.string().optional(),
-  AMAZON_SECRET_KEY: z.string().optional(),
+  AMAZON_ACCESS_KEY_ID: z.string().optional(),
+  AMAZON_SECRET_ACCESS_KEY: z.string().optional(),
   AMAZON_ASSOCIATE_TAG: z.string().optional(),
   AMAZON_REGION: z.string().optional(),
+  // Legacy support
+  AMAZON_ACCESS_KEY: z.string().optional(),
+  AMAZON_SECRET_KEY: z.string().optional(),
 
   WALMART_API_KEY: z.string().optional(),
+  WALMART_PARTNER_ID: z.string().optional(),
   TARGET_API_KEY: z.string().optional(),
   SERP_API_KEY: z.string().optional(),
+  
+  // Scraping Services (for development - no approvals needed)
+  BRIGHT_DATA_USERNAME: z.string().optional(),
+  BRIGHT_DATA_PASSWORD: z.string().optional(),
+  BRIGHT_DATA_ZONE: z.string().optional(),
+  APIFY_API_KEY: z.string().optional(), // Apify actors API (for gas prices, etc.)
+  SERPAPI_KEY: z.string().optional(), // Google Shopping API & Google Maps API
+  OILPRICEAPI_KEY: z.string().optional(), // Fuel price API
+  SCRAPINGBEE_API_KEY: z.string().optional(), // Web scraping API (for GasBuddy, etc.)
+  
+  // eBay API
+  EBAY_CLIENT_ID: z.string().optional(),
+  EBAY_CLIENT_SECRET: z.string().optional(),
+  
+  // Best Buy API
+  BESTBUY_API_KEY: z.string().optional(),
 
   RATE_LIMIT_TTL: z.coerce.number().default(60),
   RATE_LIMIT_MAX: z.coerce.number().default(100),

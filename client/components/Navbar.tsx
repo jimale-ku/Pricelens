@@ -6,8 +6,7 @@
  */
 
 import { View, Text, useWindowDimensions } from "react-native";
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
+import AppLogo from './AppLogo';
 
 export default function Navbar() {
   const { width } = useWindowDimensions();
@@ -49,51 +48,30 @@ export default function Navbar() {
         height: 64,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          {/* App Logo Icon - Purple Gradient Square with Rounded Corners and Shadow */}
-          {/* Figma: 64x64, rounded-2xl (16px), bg-gradient-to-br from-blue-500 via-purple-500 to-cyan-500, shadow-lg shadow-blue-500/50 */}
-          <LinearGradient
-            colors={['#3B82F6', '#8B5CF6', '#06B6D4']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          {/* App Logo Icon - Circular with Dark Background */}
+          <View
             style={{
               width: iconSize,
               height: iconSize,
-              borderRadius: iconRadius,
+              borderRadius: iconSize / 2, // Fully circular
+              backgroundColor: '#0F172A', // Dark background
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: '#3B82F6',
+              shadowColor: '#000',
               shadowOffset: {
                 width: 0,
-                height: 10,
+                height: 4,
               },
-              shadowOpacity: 0.5,
-              shadowRadius: 15,
-              elevation: 10,
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.1)', // Subtle border for professionalism
             }}
           >
-            {/* White Eye Icon - Figma: 32x32 lucide-eye icon in white */}
-            <Svg
-              width={eyeIconSize}
-              height={eyeIconSize}
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <Path
-                d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"
-                stroke="#ffffff"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <Path
-                d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"
-                stroke="#ffffff"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </LinearGradient>
+            {/* App Logo - Fills the circular div (90% of container for padding) */}
+            <AppLogo size={iconSize * 0.9} color="#FFFFFF" />
+          </View>
 
           {/* App Title & Tagline */}
           <View style={{ flex: 1 }}>

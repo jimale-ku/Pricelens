@@ -5,6 +5,69 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...');
 
+  // Create subscription plans
+  const freePlan = await prisma.subscriptionPlan.upsert({
+    where: { tier: 'FREE' },
+    update: {},
+    create: {
+      name: 'Free',
+      tier: 'FREE',
+      price: 0,
+      currency: 'USD',
+      interval: 'month',
+      features: [
+        'Basic product search (10 searches/day)',
+        'View prices from 3 stores max',
+        'Save up to 5 favorites',
+        'Create 1 shopping list',
+        'Basic price alerts (1 active alert)',
+      ],
+      maxSearches: 10,
+      maxStores: 3,
+      maxFavorites: 5,
+      maxLists: 1,
+      maxAlerts: 1,
+      hasPriceHistory: false,
+      hasAdvancedFilters: false,
+      hasAdFree: false,
+    },
+  });
+
+  const plusPlan = await prisma.subscriptionPlan.upsert({
+    where: { tier: 'PLUS' },
+    update: {},
+    create: {
+      name: 'Plus',
+      tier: 'PLUS',
+      price: 9.99,
+      currency: 'USD',
+      interval: 'month',
+      stripePriceId: process.env.STRIPE_PRICE_ID_PLUS_MONTHLY || null,
+      features: [
+        'Unlimited product searches',
+        'View prices from all stores (10+)',
+        'Unlimited favorites',
+        'Unlimited shopping lists',
+        'Unlimited price alerts',
+        '90-day price history',
+        'Advanced filters & sorting',
+        'Save unlimited comparisons',
+        'Priority customer support',
+        'Ad-free experience',
+      ],
+      maxSearches: null, // unlimited
+      maxStores: null, // unlimited
+      maxFavorites: null, // unlimited
+      maxLists: null, // unlimited
+      maxAlerts: null, // unlimited
+      hasPriceHistory: true,
+      hasAdvancedFilters: true,
+      hasAdFree: true,
+    },
+  });
+
+  console.log(`✅ Created subscription plans: ${freePlan.name}, ${plusPlan.name}`);
+
   // Create categories
   const categories = await Promise.all([
     prisma.category.upsert({
@@ -60,7 +123,7 @@ async function main() {
         name: 'Walmart',
         slug: 'walmart',
         logo: 'https://logo.clearbit.com/walmart.com',
-        websiteUrl: 'https://walmart.com',
+        websiteUrl: 'https://www.walmart.com',
         enabled: true,
       },
     }),
@@ -71,7 +134,7 @@ async function main() {
         name: 'Amazon',
         slug: 'amazon',
         logo: 'https://logo.clearbit.com/amazon.com',
-        websiteUrl: 'https://amazon.com',
+        websiteUrl: 'https://www.amazon.com',
         enabled: true,
       },
     }),
@@ -82,7 +145,7 @@ async function main() {
         name: 'Target',
         slug: 'target',
         logo: 'https://logo.clearbit.com/target.com',
-        websiteUrl: 'https://target.com',
+        websiteUrl: 'https://www.target.com',
         enabled: true,
       },
     }),
