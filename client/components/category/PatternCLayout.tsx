@@ -12,11 +12,12 @@
  * - Business info (hours, address, distance)
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal } from "react-native";
 import { useState, useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
+import { Linking } from 'react-native';
 import AppHeader from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { getIconName } from '@/utils/iconMapper';
@@ -56,6 +57,8 @@ export default function PatternCLayout({
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedService, setSelectedService] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   // Reset state when category changes (without remounting component)
   useEffect(() => {
@@ -64,6 +67,8 @@ export default function PatternCLayout({
     setResults([]);
     setHasSearched(false);
     setLoading(false);
+    setSelectedService(null);
+    setShowDetailsModal(false);
   }, [categorySlug, defaultServiceType, serviceTypes]);
 
   const iconName = getIconName(categoryIcon);
@@ -548,6 +553,10 @@ export default function PatternCLayout({
                           )}
                           
                           <TouchableOpacity
+                            onPress={() => {
+                              setSelectedService(result);
+                              setShowDetailsModal(true);
+                            }}
                             activeOpacity={0.8}
                             style={{
                               backgroundColor: 'rgba(96, 165, 250, 0.1)',
@@ -576,6 +585,261 @@ export default function PatternCLayout({
           )}
         </View>
       </ScrollView>
+      
+      {/* Service Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDetailsModal(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          justifyContent: 'flex-end',
+        }}>
+          <View style={{
+            backgroundColor: '#0F172A',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            maxHeight: '90%',
+          }}>
+            {/* Header */}
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 24,
+            }}>
+              <Text style={{
+                fontSize: 24,
+                fontWeight: '700',
+                color: '#E2E8F0',
+              }}>
+                {selectedService?.name || selectedService?.businessName || 'Service Details'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowDetailsModal(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={24} color="#E2E8F0" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Rating */}
+              {selectedService?.rating && (
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 16,
+                }}>
+                  <Ionicons name="star" size={20} color="#FBBF24" />
+                  <Text style={{
+                    color: '#E2E8F0',
+                    fontSize: 18,
+                    fontWeight: '600',
+                  }}>
+                    {selectedService.rating}
+                  </Text>
+                  {selectedService.reviewCount && (
+                    <Text style={{
+                      color: '#94A3B8',
+                      fontSize: 14,
+                    }}>
+                      ({selectedService.reviewCount} reviews)
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Address */}
+              {selectedService?.address && (
+                <View style={{
+                  marginBottom: 16,
+                }}>
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    marginBottom: 8,
+                  }}>
+                    <Ionicons name="location" size={20} color="#60a5fa" />
+                    <Text style={{
+                      color: '#94A3B8',
+                      fontSize: 14,
+                      fontWeight: '600',
+                      marginBottom: 4,
+                    }}>
+                      Address
+                    </Text>
+                  </View>
+                  <Text style={{
+                    color: '#E2E8F0',
+                    fontSize: 16,
+                    marginLeft: 28,
+                  }}>
+                    {selectedService.address}
+                  </Text>
+                  {selectedService.distance && (
+                    <Text style={{
+                      color: '#60a5fa',
+                      fontSize: 14,
+                      marginLeft: 28,
+                      marginTop: 4,
+                    }}>
+                      {selectedService.distance} away
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Phone */}
+              {selectedService?.phone && (
+                <View style={{
+                  marginBottom: 16,
+                }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Linking.openURL(`tel:${selectedService.phone}`);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                      borderRadius: 12,
+                      padding: 12,
+                    }}
+                  >
+                    <Ionicons name="call" size={20} color="#60a5fa" />
+                    <Text style={{
+                      color: '#60a5fa',
+                      fontSize: 16,
+                      fontWeight: '500',
+                    }}>
+                      {selectedService.phone}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Website */}
+              {selectedService?.website && (
+                <View style={{
+                  marginBottom: 16,
+                }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const url = selectedService.website.startsWith('http') 
+                        ? selectedService.website 
+                        : `https://${selectedService.website}`;
+                      Linking.openURL(url);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                      borderRadius: 12,
+                      padding: 12,
+                    }}
+                  >
+                    <Ionicons name="globe" size={20} color="#60a5fa" />
+                    <Text style={{
+                      color: '#60a5fa',
+                      fontSize: 16,
+                      fontWeight: '500',
+                      flex: 1,
+                    }} numberOfLines={1}>
+                      Visit Website
+                    </Text>
+                    <Ionicons name="open-outline" size={16} color="#60a5fa" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Hours */}
+              {selectedService?.hours && (
+                <View style={{
+                  marginBottom: 16,
+                }}>
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 8,
+                  }}>
+                    <Ionicons name="time" size={20} color="#94A3B8" />
+                    <Text style={{
+                      color: '#94A3B8',
+                      fontSize: 14,
+                      fontWeight: '600',
+                    }}>
+                      Hours
+                    </Text>
+                  </View>
+                  <Text style={{
+                    color: '#E2E8F0',
+                    fontSize: 16,
+                    marginLeft: 28,
+                  }}>
+                    {selectedService.hours}
+                  </Text>
+                </View>
+              )}
+
+              {/* Price */}
+              <View style={{
+                marginBottom: 16,
+              }}>
+                <Text style={{
+                  color: '#94A3B8',
+                  fontSize: 14,
+                  fontWeight: '600',
+                  marginBottom: 8,
+                }}>
+                  Pricing
+                </Text>
+                {selectedService?.priceRange ? (
+                  <Text style={{
+                    color: '#E2E8F0',
+                    fontSize: 18,
+                    fontWeight: '600',
+                  }}>
+                    {selectedService.priceRange}
+                  </Text>
+                ) : selectedService?.price ? (
+                  <Text style={{
+                    color: '#E2E8F0',
+                    fontSize: 18,
+                    fontWeight: '600',
+                  }}>
+                    {selectedService.price}
+                  </Text>
+                ) : (
+                  <Text style={{
+                    color: '#94A3B8',
+                    fontSize: 16,
+                  }}>
+                    Contact for pricing
+                  </Text>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      
       <BottomNav />
     </SafeAreaView>
   );

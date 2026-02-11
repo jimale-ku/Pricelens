@@ -30,9 +30,9 @@ export default function ListDetailScreen() {
     return unsubscribe;
   }, [router]);
 
-  const loadList = () => {
+  const loadList = async () => {
     if (!id) return;
-    const loadedList = getListById(id);
+    const loadedList = await getListById(id);
     setList(loadedList);
     setIsLoading(false);
   };
@@ -46,10 +46,10 @@ export default function ListDetailScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             if (!id) return;
-            removeItemFromList(id, itemId);
-            loadList();
+            await removeItemFromList(id, itemId);
+            await loadList();
           },
         },
       ]
@@ -64,15 +64,15 @@ export default function ListDetailScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Update',
-          onPress: (value) => {
+          onPress: async (value) => {
             if (!id || !value) return;
             const newQuantity = parseInt(value, 10);
             if (isNaN(newQuantity) || newQuantity < 1) {
               Alert.alert('Error', 'Please enter a valid quantity (1 or more)');
               return;
             }
-            updateItemQuantity(id, itemId, newQuantity);
-            loadList();
+            await updateItemQuantity(id, itemId, newQuantity);
+            await loadList();
           },
         },
       ],

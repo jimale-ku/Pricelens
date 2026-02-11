@@ -1,20 +1,29 @@
 /**
- * API Configuration
- * 
- * Update API_BASE_URL with your computer's IP address:
- * 1. Run: ipconfig (Windows) or ifconfig (Mac/Linux)
- * 2. Find your IPv4 Address (e.g., 192.168.1.5)
- * 3. Replace localhost with your IP below
+ * API Configuration – FRONTEND ↔ BACKEND LINK
+ *
+ * If categories show "No products" or keep loading, the app may not be
+ * reaching the server. Check:
+ *
+ * 1. Backend is running: in project root run  npm run start:dev  (or  cd server && npm run start:dev)
+ * 2. Same network: phone/emulator and PC must be on the same Wi‑Fi (or emulator uses localhost).
+ * 3. This URL must match your PC:
+ *    - Physical device: use your PC’s IPv4 (ipconfig on Windows, ifconfig on Mac/Linux).
+ *    - Emulator: often  http://10.0.2.2:3000  (Android) or  http://localhost:3000  (iOS).
+ * 4. Test in browser: open  API_BASE_URL/stores  – you should get JSON.
+ *
+ * NOTE: If using mobile hotspot, use the PC’s IP on that hotspot. IP can change when you switch networks.
  */
 
 // For development on physical device or emulator
-export const API_BASE_URL = 'http://192.168.201.105:3000';
-
-// Example for physical device (update with YOUR IP):
-// export const API_BASE_URL = 'http://192.168.1.5:3000';
+// IMPORTANT: Backend runs on port 3000. Expo/Metro uses 8081 – do not use 8081 for API.
+// Override without code change: set EXPO_PUBLIC_API_URL in .env (e.g. EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000)
+const DEFAULT_API_BASE_URL = 'http://192.168.201.105:3000';
+export const API_BASE_URL =
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim()) || DEFAULT_API_BASE_URL;
 
 // API Endpoints
 export const API_ENDPOINTS = {
+  base: API_BASE_URL,
   // Products
   products: {
     popular: (categorySlug: string, limit: number = 6, storeSlugs?: string[], subcategory?: string, page?: number) => {
@@ -78,6 +87,29 @@ export const API_ENDPOINTS = {
     register: `${API_BASE_URL}/auth/register`,
     me: `${API_BASE_URL}/auth/me`,
   },
+
+  // Subscriptions (Stripe-backed; requires JWT for checkout / me)
+  subscriptions: {
+    me: `${API_BASE_URL}/subscriptions/me`,
+    plans: `${API_BASE_URL}/subscriptions/plans`,
+    checkout: `${API_BASE_URL}/subscriptions/checkout`,
+    cancel: `${API_BASE_URL}/subscriptions/cancel`,
+  },
+
+  // Receipts (AI receipt scanner; requires JWT)
+  receipts: {
+    analyze: `${API_BASE_URL}/receipts/analyze`,
+    analyzeSample: `${API_BASE_URL}/receipts/analyze-sample`,
+  },
+
+  // Price Alerts (requires JWT)
+  alerts: {
+    list: (includeInactive?: boolean) => `${API_BASE_URL}/alerts${includeInactive ? '?includeInactive=true' : ''}`,
+    create: `${API_BASE_URL}/alerts`,
+    update: (id: string) => `${API_BASE_URL}/alerts/${id}`,
+    delete: (id: string) => `${API_BASE_URL}/alerts/${id}`,
+    deactivate: (id: string) => `${API_BASE_URL}/alerts/${id}/deactivate`,
+  },
   
   // Services (Pattern B & C)
   services: {
@@ -98,6 +130,18 @@ export const API_ENDPOINTS = {
       if (checkOut) params.append('checkOut', checkOut);
       if (guests) params.append('guests', guests.toString());
       return `${API_BASE_URL}/services/hotels?${params.toString()}`;
+    },
+    airfare: (origin: string, destination: string, departDate?: string, returnDate?: string, passengers?: number) => {
+      const params = new URLSearchParams({ origin, destination });
+      if (departDate) params.append('departDate', departDate);
+      if (returnDate) params.append('returnDate', returnDate);
+      if (passengers) params.append('passengers', passengers.toString());
+      return `${API_BASE_URL}/services/airfare?${params.toString()}`;
+    },
+    oilChanges: (zipCode: string, vehicleType?: string) => {
+      const params = new URLSearchParams({ zipCode });
+      if (vehicleType) params.append('vehicleType', vehicleType);
+      return `${API_BASE_URL}/services/oil-changes?${params.toString()}`;
     },
     // Generic Pattern B search
     search: (category: string, params: Record<string, string>) => {

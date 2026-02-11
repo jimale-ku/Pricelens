@@ -39,7 +39,8 @@ interface CompareMultiStoreResponse {
     category?: {
       id: string;
       name: string;
-    } | null;
+      slug?: string; // Category slug for navigation
+    } | string | null; // Can be object (new format) or string (legacy)
   } | null;
   prices: Array<{
     rank: number;
@@ -104,54 +105,27 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
     return null;
   }
   
-  // Filter out products without valid images
-  const hasValidImage = (() => {
-    if (backendProduct.images && Array.isArray(backendProduct.images) && backendProduct.images.length > 0) {
-      return backendProduct.images.some((img: string) => 
-        img && typeof img === 'string' && 
-        img.trim().length > 0 && 
-        (img.startsWith('http://') || img.startsWith('https://')) &&
-        !img.includes('placeholder') &&
-        !img.includes('via.placeholder') &&
-        !img.includes('example.com') // Exclude example.com URLs (test images)
-      );
-    }
-    return false;
-  })();
-
-  // Return null if no valid image (will be filtered out)
-  if (!hasValidImage) {
-    console.warn(`⚠️ Filtering out product "${backendProduct.name}" - no valid image`);
-    return null;
-  }
-  
-  // Extract the valid image URL
+  // Extract image URL - allow products without images to display with placeholder
   let productImage: string = '';
   if (backendProduct.images && Array.isArray(backendProduct.images) && backendProduct.images.length > 0) {
     const validImages = backendProduct.images.filter((img: string) => 
       img && typeof img === 'string' && 
       img.trim().length > 0 && 
       (img.startsWith('http://') || img.startsWith('https://')) &&
-      !img.includes('placeholder') &&
-      !img.includes('via.placeholder') &&
-      !img.includes('example.com') // Exclude example.com URLs (test images)
+      !img.includes('example.com')
     );
-    if (validImages.length > 0) {
-      productImage = validImages[0];
-    }
-  } else if (typeof backendProduct.images === 'string' && backendProduct.images.trim().length > 0) {
-    const trimmed = backendProduct.images.trim();
-    if (trimmed.startsWith('http') && !trimmed.includes('placeholder') && !trimmed.includes('example.com')) {
-      productImage = trimmed;
-    }
+    if (validImages.length > 0) productImage = validImages[0];
+  }
+  if (!productImage && typeof backendProduct.images === 'string' && backendProduct.images.trim().startsWith('http')) {
+    productImage = backendProduct.images.trim();
+  }
+  if (!productImage && backendProduct.image && typeof backendProduct.image === 'string' && backendProduct.image.trim().startsWith('http')) {
+    productImage = backendProduct.image.trim();
   }
   
-  // Fallback to image field
-  if (!productImage && backendProduct.image) {
-    const trimmed = backendProduct.image.trim();
-    if (trimmed.startsWith('http') && !trimmed.includes('placeholder') && !trimmed.includes('example.com')) {
-      productImage = trimmed;
-    }
+  // Use placeholder if no image found (don't filter out product)
+  if (!productImage) {
+    productImage = 'https://via.placeholder.com/200x200/1e2736/8b95a8?text=No+Image';
   }
   
   // Handle missing prices array
@@ -173,11 +147,6 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
     return Number.isFinite(n) ? n : null;
   };
   
-  console.log(`🔄 Transforming product "${backendProduct.name}":`, {
-    pricesCount: prices.length,
-    prices: prices.map(p => ({ store: p.store?.name, price: p.price })),
-  });
-  
   // Normalize & filter out invalid prices first, then sort by price value (ascending)
   const normalizedPrices = prices
     .map((p: any) => {
@@ -185,8 +154,6 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
       return { ...p, __priceNumber: n };
     })
     .filter((p: any) => typeof p.__priceNumber === 'number' && p.__priceNumber > 0);
-  
-  console.log(`✅ Valid prices: ${normalizedPrices.length} out of ${prices.length}`);
   
   const sortedPrices = [...normalizedPrices].sort((a: any, b: any) => a.__priceNumber - b.__priceNumber);
   
@@ -235,19 +202,10 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
   // CRITICAL: Do NOT generate fake prices - only show products with REAL prices from stores
   // If no prices from backend, return null to filter out this product (it's not ready for display)
   if (storePrices.length === 0) {
-    console.warn(`🚫 Product "${backendProduct.name}" has no real prices from stores - filtering out (this is a production app, no fake prices)`);
     return null; // Filter out products without real prices
   }
   
-  // productImage is already extracted above (lines 119-145)
-  // If we got here, hasValidImage is true, so productImage should be set
-  if (!productImage) {
-    console.warn(`⚠️ Product "${backendProduct.name}" has valid image check passed but no image URL extracted`);
-    return null;
-  }
-  
-  console.log(`🖼️ Product image for ${backendProduct.name}:`, productImage);
-  
+  // productImage is already set above (with placeholder if no image found)
   return {
     id: backendProduct.id,
     name: backendProduct.name || 'Unnamed Product',
@@ -359,10 +317,12 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
         productUrl = `https://www.${storeName.toLowerCase().replace(/\s+/g, '').replace(/&/g, 'and')}.com`;
       }
       
-      console.log(`🔗 Generated store homepage URL for ${storeName}: ${productUrl}`);
+      // Reduced logging - commented out to improve performance
+      // console.log(`🔗 Generated store homepage URL for ${storeName}: ${productUrl}`);
     }
     
-    console.log(`🔗 Transform price for ${price.store.name}: Using URL: ${productUrl}`);
+    // Reduced logging - commented out to improve performance (was causing 5s delays)
+    // console.log(`🔗 Transform price for ${price.store.name}: Using URL: ${productUrl}`);
     
     return {
       rank: price.rank,
@@ -422,11 +382,28 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
   
   console.log('🖼️ transformCompareResponse - Final productImage:', productImage);
   
+  // Extract category info - backend now returns category as object with id, name, slug
+  let categoryName = 'Uncategorized';
+  let categorySlug: string | undefined;
+  
+  if (product.category) {
+    if (typeof product.category === 'string') {
+      // Legacy: If category is a string, use it and derive slug
+      categoryName = product.category;
+      categorySlug = product.category.toLowerCase().replace(/\s+/g, '-');
+    } else if (product.category && typeof product.category === 'object') {
+      // New format: category is an object with id, name, slug
+      categoryName = product.category.name || 'Uncategorized';
+      categorySlug = product.category.slug;
+    }
+  }
+  
   return {
     id: product.id || 'temp-' + Date.now(),
     name: product.name,
     image: productImage,
-    category: product.category?.name || 'Uncategorized',
+    category: categoryName,
+    categorySlug: categorySlug, // Add categorySlug for navigation
     storePrices,
     maxSavings, // Add maxSavings to the product for the "Save up to" callout
     bestPrice: response.metadata?.lowestPrice || 0,

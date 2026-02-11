@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -67,14 +67,58 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth callback' })
   @ApiResponse({ status: 200, description: 'Google login successful' })
-  async googleAuthCallback(@Req() req: any) {
-    const googleUser = req.user;
-    const result = await this.authService.validateGoogleUser(googleUser);
-    
-    // For mobile apps, you'd return the tokens in JSON
-    // For web, you might redirect to frontend with tokens
-    // For now, returning JSON (mobile-friendly)
-    return result;
+  async googleAuthCallback(@Req() req: any, @Res() res: any) {
+    try {
+      const googleUser = req.user;
+      const result = await this.authService.validateGoogleUser(googleUser);
+      
+      // Encode tokens for deep link (using URL fragment to avoid server logs)
+      const tokens = encodeURIComponent(JSON.stringify({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        user: result.user,
+      }));
+      
+      // Redirect to app deep link
+      const deepLink = `pricelens://auth/callback?data=${tokens}`;
+      
+      // For mobile: redirect to deep link
+      // For web/browser: redirect to frontend with tokens
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8081';
+      const webRedirect = `${frontendUrl}/auth/callback?data=${tokens}`;
+      
+      // Try to detect if request is from mobile app (check user agent or use query param)
+      const isMobile = req.query.mobile === 'true' || req.headers['user-agent']?.includes('Mobile');
+      
+      if (isMobile) {
+        // Redirect to deep link
+        res.redirect(deepLink);
+      } else {
+        // For web, redirect to frontend URL or show HTML page that redirects
+        res.send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Signing in...</title>
+              <meta http-equiv="refresh" content="0;url=${deepLink}">
+              <script>
+                window.location.href = '${deepLink}';
+                setTimeout(function() {
+                  window.location.href = '${webRedirect}';
+                }, 1000);
+              </script>
+            </head>
+            <body>
+              <p>Redirecting to app...</p>
+              <p>If you're not redirected, <a href="${deepLink}">click here</a></p>
+            </body>
+          </html>
+        `);
+      }
+    } catch (error) {
+      const errorMsg = encodeURIComponent(error.message || 'Authentication failed');
+      res.redirect(`pricelens://auth/error?error=${errorMsg}`);
+    }
   }
 
   @UseGuards(JwtAuthGuard)

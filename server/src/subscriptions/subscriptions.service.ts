@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import { SubscriptionTier } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 
@@ -100,8 +101,18 @@ export class SubscriptionsService {
       throw new BadRequestException('Cannot checkout with free plan');
     }
 
-    if (!plan.stripePriceId) {
-      throw new BadRequestException('Plan does not have a Stripe price ID');
+    const useYearly = dto.interval === 'year';
+    const planWithYearly = plan as typeof plan & { stripePriceIdYearly?: string | null };
+    const priceId = useYearly && planWithYearly.stripePriceIdYearly
+      ? planWithYearly.stripePriceIdYearly
+      : plan.stripePriceId;
+
+    if (!priceId) {
+      throw new BadRequestException(
+        useYearly
+          ? 'Plan does not have a yearly Stripe price. Use monthly or add STRIPE_PRICE_ID_*_YEARLY.'
+          : 'Plan does not have a Stripe price ID',
+      );
     }
 
     // Get or create Stripe customer
@@ -136,14 +147,16 @@ export class SubscriptionsService {
       });
     }
 
-    // Create checkout session
-    const session = await this.stripe.checkout.sessions.create({
+    const planWithTrial = plan as typeof plan & { trialPeriodDays?: number | null };
+    const trialDays = planWithTrial.trialPeriodDays ?? 0;
+
+    const sessionParams: any = {
       customer: stripeCustomer.stripeCustomerId,
       payment_method_types: ['card'],
       mode: 'subscription',
       line_items: [
         {
-          price: plan.stripePriceId,
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -152,8 +165,15 @@ export class SubscriptionsService {
       metadata: {
         userId,
         planId: plan.id,
+        interval: dto.interval || 'month',
       },
-    });
+    };
+
+    if (trialDays > 0) {
+      sessionParams.subscription_data = { trial_period_days: trialDays };
+    }
+
+    const session = await this.stripe.checkout.sessions.create(sessionParams);
 
     return {
       sessionId: session.id,
@@ -171,24 +191,24 @@ export class SubscriptionsService {
     }
     switch (event.type) {
       case 'checkout.session.completed':
-        await this.handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        await this.handleCheckoutCompleted(event.data.object as any);
         break;
 
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-        await this.handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        await this.handleSubscriptionUpdated(event.data.object as any);
         break;
 
       case 'customer.subscription.deleted':
-        await this.handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        await this.handleSubscriptionDeleted(event.data.object as any);
         break;
 
       case 'invoice.payment_succeeded':
-        await this.handlePaymentSucceeded(event.data.object as Stripe.Invoice);
+        await this.handlePaymentSucceeded(event.data.object as any);
         break;
 
       case 'invoice.payment_failed':
-        await this.handlePaymentFailed(event.data.object as Stripe.Invoice);
+        await this.handlePaymentFailed(event.data.object as any);
         break;
 
       default:
@@ -196,7 +216,7 @@ export class SubscriptionsService {
     }
   }
 
-  private async handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  private async handleCheckoutCompleted(session: any) {
     const userId = session.metadata?.userId;
     const planId = session.metadata?.planId;
 
@@ -224,7 +244,7 @@ export class SubscriptionsService {
   }
 
   private async handleSubscriptionUpdated(
-    stripeSubscription: Stripe.Subscription,
+    stripeSubscription: any,
   ) {
     const customerId = stripeSubscription.customer as string;
     const stripeCustomer = await this.prisma.stripeCustomer.findUnique({
@@ -255,7 +275,7 @@ export class SubscriptionsService {
   }
 
   private async handleSubscriptionDeleted(
-    stripeSubscription: Stripe.Subscription,
+    stripeSubscription: any,
   ) {
     const customerId = stripeSubscription.customer as string;
     const stripeCustomer = await this.prisma.stripeCustomer.findUnique({
@@ -288,7 +308,7 @@ export class SubscriptionsService {
     });
   }
 
-  private async handlePaymentSucceeded(invoice: Stripe.Invoice) {
+  private async handlePaymentSucceeded(invoice: any) {
     const subscriptionId = invoice.subscription as string;
     if (!subscriptionId) return;
 
@@ -298,7 +318,7 @@ export class SubscriptionsService {
     await this.handleSubscriptionUpdated(stripeSubscription);
   }
 
-  private async handlePaymentFailed(invoice: Stripe.Invoice) {
+  private async handlePaymentFailed(invoice: any) {
     const subscriptionId = invoice.subscription as string;
     if (!subscriptionId) return;
 
@@ -320,7 +340,7 @@ export class SubscriptionsService {
   private async updateSubscriptionFromStripe(
     userId: string,
     planId: string,
-    stripeSubscription: Stripe.Subscription,
+    stripeSubscription: any,
   ) {
     const statusMap: Record<string, 'ACTIVE' | 'CANCELED' | 'PAST_DUE' | 'TRIALING' | 'UNPAID'> = {
       active: 'ACTIVE',
@@ -340,7 +360,7 @@ export class SubscriptionsService {
         userId,
         planId,
         status: statusMap[stripeSubscription.status] || 'ACTIVE',
-        tier: plan?.tier || 'PLUS',
+        tier: plan?.tier ?? SubscriptionTier.PRO,
         stripeSubscriptionId: stripeSubscription.id,
         stripeCustomerId: stripeSubscription.customer as string,
         currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
@@ -353,7 +373,7 @@ export class SubscriptionsService {
       update: {
         planId,
         status: statusMap[stripeSubscription.status] || 'ACTIVE',
-        tier: plan?.tier || 'PLUS',
+        tier: plan?.tier ?? SubscriptionTier.PRO,
         stripeSubscriptionId: stripeSubscription.id,
         currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
         currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),

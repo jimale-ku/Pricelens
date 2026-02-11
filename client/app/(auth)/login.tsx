@@ -3,7 +3,7 @@
  * Converted from Figma design to React Native
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import AppLogo from '../../components/AppLogo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, G, Circle } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL, API_ENDPOINTS } from '../../constants/api';
 
 // Icon components (inline for simplicity)
 const EyeIcon = ({ size = 40, color = '#FFF' }) => (
@@ -97,14 +101,40 @@ const UserIcon = ({ size = 20, color = '#94A3B8' }) => (
   </Svg>
 );
 
+// Google Logo Component
+const GoogleIcon = ({ size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <G>
+      <Path
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+        fill="#4285F4"
+      />
+      <Path
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+        fill="#34A853"
+      />
+      <Path
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+        fill="#FBBC05"
+      />
+      <Path
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+        fill="#EA4335"
+      />
+    </G>
+  </Svg>
+);
+
 export default function LoginScreen() {
   const router = useRouter();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!email || !password || (isSignUp && !name)) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -117,16 +147,257 @@ export default function LoginScreen() {
       return;
     }
 
-    if (isSignUp) {
-      Alert.alert('Success', 'Account created successfully! Welcome to PriceLens!');
+    setIsLoading(true);
+    try {
+      if (isSignUp) {
+        // Register new user
+        const res = await fetch(API_ENDPOINTS.auth.register, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email, 
+            password, 
+            firstName: name.split(' ')[0] || name, 
+            lastName: name.split(' ').slice(1).join(' ') || '' 
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          Alert.alert('Registration Failed', data?.message || 'Could not create account. Please try again.');
+          return;
+        }
+        // Store tokens
+        if (data.accessToken) {
+          await AsyncStorage.setItem('accessToken', data.accessToken);
+        }
+        if (data.refreshToken) {
+          await AsyncStorage.setItem('refreshToken', data.refreshToken);
+        }
+        Alert.alert('Success', 'Account created successfully! Welcome to PriceLens!');
+      } else {
+        // Login existing user
+        const res = await fetch(API_ENDPOINTS.auth.login, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          Alert.alert('Login Failed', data?.message || 'Invalid email or password. Please try again.');
+          return;
+        }
+        // Store tokens
+        if (data.accessToken) {
+          await AsyncStorage.setItem('accessToken', data.accessToken);
+          console.log('✅ Access token stored');
+        }
+        if (data.refreshToken) {
+          await AsyncStorage.setItem('refreshToken', data.refreshToken);
+        }
+        if (data.user) {
+          await AsyncStorage.setItem('user', JSON.stringify(data.user));
+        }
+      }
+      // Navigate to home
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      console.error('Login error:', error);
+      Alert.alert('Error', error?.message || 'Network error. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Navigate to home
-    router.replace('/(tabs)');
   };
 
   const handleDemoLogin = () => {
     router.replace('/(tabs)');
+  };
+
+  // Handle deep links for OAuth callback
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      try {
+        if (url.startsWith('pricelens://auth/callback')) {
+          const urlObj = new URL(url.replace('pricelens://', 'https://'));
+          const dataParam = urlObj.searchParams.get('data');
+          
+          if (dataParam) {
+            const authData = JSON.parse(decodeURIComponent(dataParam));
+            
+            // Store tokens
+            if (authData.accessToken) {
+              await AsyncStorage.setItem('accessToken', authData.accessToken);
+            }
+            if (authData.refreshToken) {
+              await AsyncStorage.setItem('refreshToken', authData.refreshToken);
+            }
+            if (authData.user) {
+              await AsyncStorage.setItem('user', JSON.stringify(authData.user));
+            }
+            
+            setIsGoogleLoading(false);
+            Alert.alert('Success', 'Signed in with Google successfully!');
+            router.replace('/(tabs)');
+          }
+        } else if (url.startsWith('pricelens://auth/error')) {
+          const urlObj = new URL(url.replace('pricelens://', 'https://'));
+          const error = urlObj.searchParams.get('error');
+          setIsGoogleLoading(false);
+          Alert.alert('Sign In Failed', error || 'An error occurred during sign in');
+        }
+      } catch (error) {
+        console.error('Error handling deep link:', error);
+        setIsGoogleLoading(false);
+        Alert.alert('Error', 'Failed to process sign in. Please try again.');
+      }
+    };
+
+    // Handle initial URL (if app was opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    // Listen for deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
+
+  const checkBackendConnection = async (): Promise<boolean> => {
+    try {
+      // Try to reach a simple endpoint (stores endpoint is usually available)
+      const testUrl = `${API_BASE_URL}/stores`;
+      console.log('🔍 Testing backend connection:', testUrl);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      const isReachable = response.ok || response.status < 500;
+      console.log(isReachable ? '✅ Backend is reachable' : '❌ Backend returned error:', response.status);
+      return isReachable;
+    } catch (error: any) {
+      console.error('❌ Backend connection check failed:', error.message);
+      console.error('Backend URL:', API_BASE_URL);
+      return false;
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      
+      // Check if backend is reachable before opening browser
+      const isBackendReachable = await checkBackendConnection();
+      
+      if (!isBackendReachable) {
+        setIsGoogleLoading(false);
+        const troubleshootingSteps = [
+          `❌ Cannot connect to backend server`,
+          ``,
+          `📍 Backend URL: ${API_BASE_URL}`,
+          ``,
+          `🔧 Troubleshooting Steps:`,
+          ``,
+          `1️⃣ Is backend running?`,
+          `   Open terminal and run:`,
+          `   cd server`,
+          `   npm run start:dev`,
+          ``,
+          `2️⃣ Check IP address`,
+          `   Your IP: 192.168.201.105`,
+          `   Update if different in:`,
+          `   client/constants/api.ts`,
+          ``,
+          `3️⃣ Same WiFi network?`,
+          `   Phone and PC must be on same WiFi`,
+          ``,
+          `4️⃣ Test in browser:`,
+          `   Open: ${API_BASE_URL}/api`,
+          `   Should show Swagger API docs`,
+          ``,
+          `5️⃣ Firewall blocking?`,
+          `   Allow port 3000 in Windows Firewall`,
+        ].join('\n');
+        
+        Alert.alert(
+          '⚠️ Backend Not Reachable',
+          troubleshootingSteps,
+          [
+            { 
+              text: 'Try Anyway', 
+              onPress: () => {
+                setIsGoogleLoading(true);
+                proceedWithGoogleSignIn();
+              },
+              style: 'default'
+            },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+        return;
+      }
+      
+      proceedWithGoogleSignIn();
+    } catch (error: any) {
+      console.error('Google sign-in error:', error);
+      setIsGoogleLoading(false);
+      Alert.alert(
+        'Error', 
+        `Could not start Google sign-in.\n\nError: ${error.message || 'Unknown error'}\n\nBackend URL: ${API_BASE_URL}`
+      );
+    }
+  };
+
+  const proceedWithGoogleSignIn = async () => {
+    try {
+      const googleAuthUrl = `${API_BASE_URL}/auth/google?mobile=true`;
+      console.log('🔐 Opening Google sign-in URL:', googleAuthUrl);
+      
+      const canOpen = await Linking.canOpenURL(googleAuthUrl);
+      console.log('Can open URL:', canOpen);
+      
+      if (canOpen) {
+        console.log('✅ Opening browser for Google sign-in...');
+        await Linking.openURL(googleAuthUrl);
+        // Keep loading state - will be cleared when deep link is handled or timeout
+        // Set timeout to clear loading state if deep link doesn't arrive
+        setTimeout(() => {
+          if (isGoogleLoading) {
+            console.warn('⏱️ Google sign-in timeout - no callback received');
+            setIsGoogleLoading(false);
+            Alert.alert(
+              'Sign-In Timeout',
+              'Did not receive callback from Google sign-in.\n\nPlease try again or check if backend is running.'
+            );
+          }
+        }, 60000); // 60 second timeout
+      } else {
+        setIsGoogleLoading(false);
+        Alert.alert(
+          'Google Sign-In',
+          `Cannot open URL automatically.\n\nPlease manually open this URL in your browser:\n\n${googleAuthUrl}\n\nAfter signing in, you'll be redirected back to the app.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('❌ Error opening Google sign-in:', error);
+      setIsGoogleLoading(false);
+      Alert.alert(
+        'Error', 
+        `Could not open Google sign-in.\n\nError: ${error.message}\n\nBackend URL: ${API_BASE_URL}\n\nMake sure backend is running!\n\nRun: cd server && npm run start:dev`
+      );
+    }
   };
 
   return (
@@ -367,8 +638,9 @@ export default function LoginScreen() {
                 {/* Submit Button */}
                 <Pressable
                   onPress={handleSubmit}
+                  disabled={isLoading}
                   style={({ pressed }) => ({
-                    opacity: pressed ? 0.9 : 1,
+                    opacity: pressed || isLoading ? 0.7 : 1,
                     transform: [{ scale: pressed ? 0.98 : 1 }],
                   })}
                 >
@@ -387,9 +659,13 @@ export default function LoginScreen() {
                       elevation: 8,
                     }}
                   >
-                    <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 16 }}>
-                      {isSignUp ? 'Sign Up' : 'Sign In'}
-                    </Text>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 16 }}>
+                        {isSignUp ? 'Sign Up' : 'Sign In'}
+                      </Text>
+                    )}
                   </LinearGradient>
                 </Pressable>
               </View>
@@ -417,6 +693,48 @@ export default function LoginScreen() {
                   </View>
                 </View>
               </View>
+
+              {/* Google Sign In Button */}
+              <Pressable
+                onPress={handleGoogleSignIn}
+                disabled={isGoogleLoading}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed || isGoogleLoading 
+                    ? 'rgba(255, 255, 255, 0.95)' 
+                    : '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0, 0, 0, 0.1)',
+                  paddingVertical: 14,
+                  borderRadius: 10,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 12,
+                  marginBottom: 12,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 3,
+                  opacity: isGoogleLoading ? 0.7 : 1,
+                })}
+              >
+                {isGoogleLoading ? (
+                  <ActivityIndicator size="small" color="#4285F4" />
+                ) : (
+                  <GoogleIcon size={20} />
+                )}
+                <Text 
+                  style={{ 
+                    color: '#1F2937', 
+                    fontWeight: '600', 
+                    fontSize: 16,
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {isGoogleLoading ? 'Signing in...' : 'Continue with Google'}
+                </Text>
+              </Pressable>
 
               {/* Demo Button */}
               <Pressable

@@ -5,6 +5,7 @@
 import { Modal, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
 import { getAllLists, createList, ShoppingList, calculateListTotal } from '@/utils/listService';
 
 interface ListPickerModalProps {
@@ -20,8 +21,19 @@ export default function ListPickerModal({
   onSelectList,
   category,
 }: ListPickerModalProps) {
-  const lists = getAllLists();
+  const [lists, setLists] = useState<ShoppingList[]>([]);
   const categoryListName = category ? `${category} List` : null;
+
+  useEffect(() => {
+    if (visible) {
+      loadLists();
+    }
+  }, [visible]);
+
+  const loadLists = async () => {
+    const loadedLists = await getAllLists();
+    setLists(loadedLists);
+  };
 
   const handleCreateNewList = () => {
     Alert.prompt(
@@ -31,11 +43,12 @@ export default function ListPickerModal({
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Create',
-          onPress: (name) => {
+          onPress: async (name) => {
             if (name && name.trim()) {
-              const newList = createList(name.trim());
+              const newList = await createList(name.trim());
+              await loadLists();
               onSelectList(newList.id);
-              onClose();
+              // Don't close here - let the handler close after async operation
             }
           },
         },
@@ -44,11 +57,12 @@ export default function ListPickerModal({
     );
   };
 
-  const handleCreateCategoryList = () => {
+  const handleCreateCategoryList = async () => {
     if (!categoryListName) return;
-    const newList = createList(categoryListName);
+    const newList = await createList(categoryListName);
+    await loadLists();
     onSelectList(newList.id);
-    onClose();
+    // Don't close here - let the handler close after async operation
   };
 
   return (
@@ -135,7 +149,7 @@ export default function ListPickerModal({
                     activeOpacity={0.8}
                     onPress={() => {
                       onSelectList(list.id);
-                      onClose();
+                      // Don't close here - let the handler close after async operation
                     }}
                     style={{
                       backgroundColor: 'rgba(15, 23, 42, 0.6)',

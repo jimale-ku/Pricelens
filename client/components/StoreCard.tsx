@@ -1,6 +1,7 @@
 import { View, Text, Image, TouchableOpacity, Linking, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
+import { addPurchaseRecord } from '@/utils/purchaseHistoryService';
 
 interface StoreCardProps {
   rank: number;
@@ -10,6 +11,11 @@ interface StoreCardProps {
   isBestDeal?: boolean;
   priceDifference?: string; // e.g., "+$0.04 more"
   productUrl?: string; // URL to the product on the store's website
+  // Product info for purchase tracking
+  productId?: string | number;
+  productName?: string;
+  productImage?: string;
+  category?: string;
 }
 
 export default function StoreCard({ 
@@ -19,7 +25,11 @@ export default function StoreCard({
   storeImage, 
   isBestDeal = false,
   priceDifference,
-  productUrl 
+  productUrl,
+  productId,
+  productName,
+  productImage,
+  category,
 }: StoreCardProps) {
   
   // Handle Shop Now button press
@@ -57,6 +67,29 @@ export default function StoreCard({
       if (canOpen) {
         await Linking.openURL(urlToOpen);
         console.log(`✅ Successfully opened product URL: ${urlToOpen}`);
+        
+        // Track purchase attempt (user clicked Shop Now)
+        // Note: We can't know if they actually purchased, but we track the intent
+        if (productId && productName && productImage && category) {
+          try {
+            const priceNum = parseFloat(price.replace('$', '').replace(',', '')) || 0;
+            await addPurchaseRecord(
+              productId.toString(),
+              productName,
+              productImage,
+              category,
+              storeName,
+              priceNum,
+              1, // quantity
+              storeImage,
+              urlToOpen
+            );
+            console.log('📝 Purchase record added');
+          } catch (error) {
+            console.error('Error recording purchase:', error);
+            // Don't show error to user - purchase tracking is silent
+          }
+        }
       } else {
         console.warn(`⚠️ Linking.canOpenURL returned false for: ${urlToOpen}`);
         Alert.alert(

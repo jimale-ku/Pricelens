@@ -20,7 +20,10 @@ export default function AppHeader() {
   const scrollViewRef = useRef<ScrollView>(null);
   const [isPlusSubscriber, setIsPlusSubscriber] = useState(true);
   const [tabPositions, setTabPositions] = useState<{ [key: string]: number }>({});
-  const activeTabRef = useRef<string>('search'); // Use ref for immediate updates
+  // Default to first category (All Retailers) instead of 'search'
+  // CATEGORY_LIST[0] is 'allretailers' with slug 'all-retailers'
+  const DEFAULT_CATEGORY = CATEGORY_LIST[0]?.slug || 'all-retailers';
+  const activeTabRef = useRef<string>(DEFAULT_CATEGORY); // Use ref for immediate updates
   const pendingNavigationRef = useRef<NodeJS.Timeout | null>(null); // Track pending navigation
 
   const segments = useSegments();
@@ -30,25 +33,29 @@ export default function AppHeader() {
     const currentPath = pathname || '';
     
     // Handle tabs routes (bottom navigation) - check exact matches first for speed
-    if (currentPath === '/(tabs)/search' || currentPath.endsWith('/search')) return 'search';
+    // Note: Search is now handled by bottom nav, not top pills
+    if (currentPath === '/(tabs)/search' || currentPath.endsWith('/search')) {
+      // When on search tab, show All Retailers as active (since search redirects there)
+      return DEFAULT_CATEGORY;
+    }
     if (currentPath === '/(tabs)/lists' || currentPath.endsWith('/lists')) return 'my-list';
     if (currentPath === '/(tabs)/profile' || currentPath.endsWith('/profile')) return 'profile';
     if (currentPath === '/(tabs)/plus' || currentPath.endsWith('/plus')) return 'plus';
     if (currentPath === '/(tabs)/analytics' || currentPath.endsWith('/analytics')) return 'analytics';
     
-    // Home tab - when on index/homepage, highlight Search pill (homepage shows search content)
+    // Home tab - when on index/homepage, NO category pill should be active
     if (currentPath === '/(tabs)' || currentPath === '/(tabs)/' || currentPath === '/(tabs)/index' || 
-        currentPath === '/' || currentPath === '/index' || currentPath === '/(tabs)/index') {
-      return 'search'; // Home tab content = Search functionality
+        currentPath === '/' || currentPath === '/index') {
+      return ''; // Return empty string so no pill is highlighted on homepage
     }
     
     // Handle category routes
     if (currentPath.startsWith('/category/')) {
       const slug = currentPath.split('/category/')[1]?.split('?')[0]; // Remove query params
-      return slug || 'search';
+      return slug || '';
     }
     
-    return 'search'; // Default
+    return ''; // Default to no active pill
   };
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -58,14 +65,21 @@ export default function AppHeader() {
   });
   const [, forceUpdate] = useState(0); // Force re-render counter
 
-  // Update active tab immediately when route changes (useLayoutEffect for synchronous updates)
+    // Update active tab immediately when route changes (useLayoutEffect for synchronous updates)
   useLayoutEffect(() => {
     const newActiveTab = getActiveTab();
     // Only update if the pathname actually matches the expected route
     // This prevents race conditions where stale pathname triggers wrong active tab
     if (newActiveTab !== activeTabRef.current) {
       // Double-check: verify pathname matches the category slug to prevent stale updates
-      if (pathname?.includes(newActiveTab) || newActiveTab === 'search') {
+      // Allow update if it's a valid category or if pathname includes the slug
+      const isValidCategory = CATEGORY_LIST.some(cat => cat.slug === newActiveTab) || 
+                               pathname?.includes(newActiveTab) ||
+                               newActiveTab === 'my-list' || 
+                               newActiveTab === 'plus' || 
+                               newActiveTab === 'profile' ||
+                               newActiveTab === 'analytics';
+      if (isValidCategory) {
         activeTabRef.current = newActiveTab; // Update ref immediately
         setActiveTab(newActiveTab); // Update state synchronously
       }
@@ -89,9 +103,8 @@ export default function AppHeader() {
     // Store timeout ref so we can cancel it if user clicks again
     pendingNavigationRef.current = setTimeout(() => {
       // Use replace instead of push to avoid navigation stack buildup
-      if (slug === 'search') {
-        router.replace('/(tabs)/search');
-      } else if (slug === 'my-list') {
+      // Note: 'search' is no longer a category pill - it's handled by bottom nav
+      if (slug === 'my-list') {
         router.replace('/(tabs)/lists');
       } else if (slug === 'plus') {
         router.replace('/(tabs)/plus');
@@ -100,6 +113,7 @@ export default function AppHeader() {
       } else if (slug === 'analytics') {
         router.replace('/(tabs)/analytics');
       } else {
+        // All other slugs are categories - navigate to category page
         router.replace(`/category/${slug}`);
       }
       pendingNavigationRef.current = null;
@@ -189,8 +203,11 @@ export default function AppHeader() {
             </View>
           </TouchableOpacity>
 
-          {/* Right Side: Plus Badge */}
-          {isPlusSubscriber && (
+          {/* Right Side: Plus / Upgrade - always tappable, goes to Plus page */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.replace('/(tabs)/plus')}
+          >
             <LinearGradient
               colors={['#3B82F6', '#9333EA']}
               start={{ x: 0, y: 0 }}
@@ -211,10 +228,10 @@ export default function AppHeader() {
             >
               <Ionicons name="trophy-outline" size={18} color="#FDE047" />
               <Text style={{ fontSize: 12, color: '#ffffff', fontWeight: '600' }}>
-                Plus
+                {isPlusSubscriber ? 'Plus' : 'Upgrade'}
               </Text>
             </LinearGradient>
-          )}
+          </TouchableOpacity>
         </View>
       </View>
 

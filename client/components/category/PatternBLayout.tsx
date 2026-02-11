@@ -12,7 +12,7 @@
  */
 
 import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Pressable } from "react-native";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
@@ -59,28 +59,71 @@ export default function PatternBLayout({
   defaultSearchValues = {},
   tableColumns,
 }: PatternBLayoutProps) {
-  const [searchValues, setSearchValues] = useState<Record<string, string>>(defaultSearchValues);
+  // Initialize state with defaultSearchValues or empty object
+  const initialSearchValues = defaultSearchValues || {};
+  const [searchValues, setSearchValues] = useState<Record<string, string>>(initialSearchValues);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [dropdownVisible, setDropdownVisible] = useState<string | null>(null);
+  
+  // Use refs to track previous values and avoid infinite loops
+  const prevCategorySlugRef = useRef<string>(categorySlug);
+  const prevDefaultSearchValuesStrRef = useRef<string>('');
 
   // Reset state when category changes (without remounting component)
+  // Only reset when categorySlug actually changes, not when defaultSearchValues object reference changes
   useEffect(() => {
-    setSearchValues(defaultSearchValues);
-    setResults([]);
-    setHasSearched(false);
-    setLoading(false);
-  }, [categorySlug, defaultSearchValues]);
+    const currentDefaultSearchValues = defaultSearchValues || {};
+    const currentDefaultSearchValuesStr = JSON.stringify(currentDefaultSearchValues);
+    
+    // Only reset if categorySlug actually changed
+    const categoryChanged = prevCategorySlugRef.current !== categorySlug;
+    
+    // Only reset if defaultSearchValues content actually changed (not just object reference)
+    const defaultValuesChanged = prevDefaultSearchValuesStrRef.current !== currentDefaultSearchValuesStr;
+    
+    if (categoryChanged || defaultValuesChanged) {
+      prevCategorySlugRef.current = categorySlug;
+      prevDefaultSearchValuesStrRef.current = currentDefaultSearchValuesStr;
+      
+      // Only update state if values actually changed to prevent unnecessary re-renders
+      const currentSearchValuesStr = JSON.stringify(searchValues);
+      if (currentSearchValuesStr !== currentDefaultSearchValuesStr) {
+        setSearchValues(currentDefaultSearchValues);
+      }
+      
+      // Always reset these when category changes
+      if (categoryChanged) {
+        setResults([]);
+        setHasSearched(false);
+        setLoading(false);
+        setDropdownVisible(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorySlug]); // Only depend on categorySlug - defaultSearchValues comparison is done inside
 
   const iconName = getIconName(categoryIcon);
 
   const handleSearch = async () => {
-    // Validate required fields
-    const zipCode = searchValues.zipCode || searchValues.location;
-    if (!zipCode?.trim()) {
-      Alert.alert('Missing Information', 'Please enter a ZIP code to search.');
-      return;
+    // Special validation for airfare (doesn't need ZIP code)
+    if (categorySlug === 'airfare') {
+      if (!searchValues.origin?.trim() || !searchValues.destination?.trim()) {
+        Alert.alert('Missing Information', 'Please enter both origin and destination.');
+        return;
+      }
+      if (!searchValues.departDate?.trim()) {
+        Alert.alert('Missing Information', 'Please select a departure date.');
+        return;
+      }
+    } else {
+      // Validate required fields for other categories
+      const zipCode = searchValues.zipCode || searchValues.location;
+      if (!zipCode?.trim()) {
+        Alert.alert('Missing Information', 'Please enter a ZIP code to search.');
+        return;
+      }
     }
 
     setLoading(true);
@@ -96,6 +139,9 @@ export default function PatternBLayout({
       } else if (categorySlug === 'gym') {
         const { API_ENDPOINTS } = require('../../constants/api');
         apiUrl = API_ENDPOINTS.services.gyms(zipCode, searchValues.membershipType);
+      } else if (categorySlug === 'oil-changes') {
+        const { API_ENDPOINTS } = require('../../constants/api');
+        apiUrl = API_ENDPOINTS.services.oilChanges(zipCode, searchValues.vehicleType);
       } else if (categorySlug === 'hotels') {
         const { API_ENDPOINTS } = require('../../constants/api');
         apiUrl = API_ENDPOINTS.services.hotels(
@@ -103,6 +149,20 @@ export default function PatternBLayout({
           searchValues.checkIn,
           searchValues.checkOut,
           searchValues.guests ? parseInt(searchValues.guests) : undefined
+        );
+      } else if (categorySlug === 'airfare') {
+        const { API_ENDPOINTS } = require('../../constants/api');
+        if (!searchValues.origin || !searchValues.destination) {
+          Alert.alert('Missing Information', 'Please enter both origin and destination.');
+          setLoading(false);
+          return;
+        }
+        apiUrl = API_ENDPOINTS.services.airfare(
+          searchValues.origin,
+          searchValues.destination,
+          searchValues.departDate,
+          searchValues.returnDate,
+          searchValues.passengers ? parseInt(searchValues.passengers) : undefined
         );
       } else {
         // Generic search for other Pattern B categories

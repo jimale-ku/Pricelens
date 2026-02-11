@@ -38,7 +38,6 @@ const PREGENERATED_CATEGORIES = new Set([
   'sports',
   'office',
   'furniture',
-  'homedecor',
   'tools',
   'pets',
 ]);
@@ -187,6 +186,12 @@ function getProductNamesForCategory(categoryName: string): string[] {
       'Throw Blanket',
       'Vase Set',
       'Candle Holder',
+      'Wall Clock',
+      'Picture Frame',
+      'Rug',
+      'Curtains',
+      'Mirror',
+      'Plant Pot',
     ],
     'Clothing': [
       'Cotton T-Shirt',
@@ -267,14 +272,6 @@ function getProductNamesForCategory(categoryName: string): string[] {
       'Desk',
       'Side Table',
       'Sofa',
-    ],
-    'Home Decor': [
-      'Wall Clock',
-      'Picture Frame',
-      'Rug',
-      'Curtains',
-      'Mirror',
-      'Plant Pot',
     ],
     'Tools & Hardware': [
       'Drill Set',
@@ -450,7 +447,7 @@ function getProductImage(productName: string, categoryName: string, categorySlug
     'Sports Equipment': 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=96&h=96&fit=crop',
     'Office Supplies': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=96&h=96&fit=crop',
     'Furniture': 'https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=96&h=96&fit=crop',
-    'Home Decor': 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=96&h=96&fit=crop',
+    'Home Accessories': 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=96&h=96&fit=crop',
     'Tools & Hardware': 'https://images.unsplash.com/photo-1504148455328-c376907d081c?w=96&h=96&fit=crop',
     'Pet Supplies': 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=96&h=96&fit=crop',
   };

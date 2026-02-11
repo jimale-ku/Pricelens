@@ -34,18 +34,35 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const errorResponse =
       exception instanceof HttpException
         ? exception.getResponse()
-        : { message: 'Internal server error' };
+        : {
+            message: exception instanceof Error ? exception.message : 'Internal server error',
+            stack: exception instanceof Error ? exception.stack : undefined,
+          };
 
-    logger.error(
-      {
-        status,
-        path: request.url,
-        method: request.method,
-        body: request.body,
-        exception,
-      },
-      'Unhandled exception',
-    );
+    // Only log 5xx errors as errors, 4xx are expected client errors
+    const isServerError = status >= 500;
+    const isClientError = status >= 400 && status < 500;
+    
+    // Don't log 401 Unauthorized or 404 Not Found as errors (they're expected)
+    const shouldLogAsError = isServerError || (isClientError && status !== 401 && status !== 404);
+    
+    const logData = {
+      status,
+      path: request.url,
+      method: request.method,
+      exception: isServerError ? exception : undefined, // Only include exception details for server errors
+    };
+
+    if (shouldLogAsError) {
+      logger.error(logData, 'Unhandled exception');
+    } else if (isClientError) {
+      // Log 4xx errors at debug level (except 401/404 which are very common)
+      if (status === 401 || status === 404) {
+        logger.debug(logData, `Client error: ${status}`);
+      } else {
+        logger.warn(logData, `Client error: ${status}`);
+      }
+    }
 
     response.status(status).json({
       success: false,

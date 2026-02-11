@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "scheme": "pricelens",
     "splash": {
       "image": "./assets/newLogo.png",
       "resizeMode": "contain",
@@ -15,14 +16,31 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/logo.png"
+      "icon": "./assets/logo.png",
+      "bundleIdentifier": "com.pricelens.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0B1020"
       },
-      "icon": "./assets/logo.png"
+      "icon": "./assets/logo.png",
+      "package": "com.pricelens.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "pricelens"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/logo.png"

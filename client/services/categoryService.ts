@@ -50,7 +50,7 @@ export async function fetchCategoryStores(categorySlug: string): Promise<Categor
       // Option 2: Get all stores and filter by category
       // For now, get all enabled stores from backend
       const storesController = new AbortController();
-      const storesTimeoutId = setTimeout(() => storesController.abort(), 5000);
+      const storesTimeoutId = setTimeout(() => storesController.abort(), 3000);
       
       const storesResponse = await fetch(API_ENDPOINTS.stores.all, {
         signal: storesController.signal,
@@ -59,6 +59,13 @@ export async function fetchCategoryStores(categorySlug: string): Promise<Categor
       
       if (storesResponse.ok) {
         const stores = await storesResponse.json();
+        
+        // CRITICAL: Validate stores is an array before calling .map()
+        if (!Array.isArray(stores)) {
+          console.warn('⚠️ Stores response is not an array:', typeof stores, stores);
+          return [];
+        }
+        
         return stores.map((store: any) => ({
           id: store.id,
           name: store.name,
@@ -94,10 +101,12 @@ export async function fetchCategoryProducts(
   limit: number = 6
 ): Promise<any[]> {
   try {
-    // Add timeout to prevent hanging
+    // Use 15s timeout so backend has time to return placeholders when SerpAPI is rate-limited (avoids endless loading)
+    const timeoutDuration = 15000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
+    console.log(`⏱️ Fetching products for ${categorySlug} (timeout: ${timeoutDuration}ms)...`);
     const response = await fetch(API_ENDPOINTS.products.popular(categorySlug, limit), {
       signal: controller.signal,
     });
@@ -106,6 +115,11 @@ export async function fetchCategoryProducts(
     
     if (!response.ok) {
       console.warn(`Failed to fetch popular products for ${categorySlug}: ${response.status}`);
+      // If backend returns error, try to get more details
+      if (response.status === 500 || response.status === 503) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`Backend error details: ${errorText}`);
+      }
       return [];
     }
 
@@ -124,7 +138,11 @@ export async function fetchCategoryProducts(
 
     // Transform backend products to frontend format
     // Backend products have: images[] (array), prices[] (with store info)
-    const transformed = transformProducts(products).filter((p: any) => {
+    console.log(`🔄 Transforming ${products.length} backend products for ${categorySlug}...`);
+    const transformed = transformProducts(products);
+    console.log(`🔄 After transformProducts: ${transformed.length} products`);
+    
+    const filtered = transformed.filter((p: any) => {
       // Safety: ensure we never show products from the wrong category
       // If categorySlug is not set, trust the backend query (it already filtered by category)
       // If categorySlug is set, it must match the requested category
@@ -136,18 +154,70 @@ export async function fetchCategoryProducts(
         return matches;
       }
       // If no categorySlug, trust backend (it already filtered by categorySlug in the query)
+      // BUT: For certain categories, we should still show products even if categorySlug is missing
+      // because the backend already filtered by categoryId
+      if (categorySlug === 'beauty' || categorySlug === 'beauty-products' || categorySlug === 'sports-equipment' || categorySlug === 'mattresses' || categorySlug === 'pet-supplies' || categorySlug === 'books') {
+        console.log(`✅ Keeping product "${p.name}" for ${categorySlug} category (no categorySlug, but backend filtered by categoryId)`);
+        return true;
+      }
       return true;
     });
     
-    console.log(`✅ Fetched ${transformed.length} popular products for ${categorySlug} (from ${products.length} backend products)`);
-    return transformed;
+    console.log(`✅ Fetched ${filtered.length} popular products for ${categorySlug} (from ${products.length} backend products, ${transformed.length} after transformation)`);
+    
+    // Log timing for books category to help debug slow loading
+    if (categorySlug === 'books') {
+      console.log(`📚 Books category: ${filtered.length} products ready to display`);
+      if (filtered.length === 0) {
+        console.warn(`⚠️ Books category: No products returned. Backend may still be fetching from SerpAPI...`);
+      }
+    }
+    
+    return filtered;
   } catch (error: any) {
-    // Silently handle network errors - app will use fallback data
-    // Only log if it's not a network/abort error (which is expected when backend is offline)
-    if (error?.name !== 'AbortError' && error?.message && !error.message.includes('Network request failed') && !error.message.includes('aborted')) {
+    // Better error handling for connection issues
+    if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+      console.log(`⏭️ Request aborted for ${categorySlug}`);
+      return [];
+    }
+    
+    // Log network errors with more detail
+    if (error?.message?.includes('Network request failed') || error?.message?.includes('Failed to fetch')) {
+      console.error(`❌ Network error fetching products for ${categorySlug}:`, error.message);
+      console.error(`   Check: 1) Backend running? 2) IP correct? 3) Same network?`);
+    } else if (error?.message && !error.message.includes('Network request failed')) {
       console.error('Error fetching category products:', error);
     }
     return [];
+  }
+}
+
+/**
+ * Fetch products progressively - returns items one by one as they're fetched
+ * This allows UI to show skeletons and reveal items as they load
+ */
+export async function* fetchCategoryProductsProgressive(
+  categorySlug: string,
+  limit: number = 6,
+  onProgress?: (products: any[], index: number) => void
+): AsyncGenerator<any[], void, unknown> {
+  try {
+    // Fetch all products first (backend handles the fetching)
+    const allProducts = await fetchCategoryProducts(categorySlug, limit);
+    
+    // Yield products one by one with small delay for progressive reveal
+    for (let i = 0; i < allProducts.length; i++) {
+      const productsSoFar = allProducts.slice(0, i + 1);
+      yield productsSoFar;
+      if (onProgress) {
+        onProgress(productsSoFar, i);
+      }
+      // Small delay to show progressive loading effect
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  } catch (error) {
+    console.error('Error in progressive fetch:', error);
+    yield [];
   }
 }
 
@@ -161,7 +231,7 @@ export async function fetchSubcategoryCounts(
 ): Promise<Record<string, number>> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout (reduced for faster failure)
 
     const response = await fetch(
       `${API_ENDPOINTS.categories.base}/slug/${categorySlug}/subcategory-counts`,

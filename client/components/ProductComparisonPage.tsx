@@ -791,6 +791,10 @@ export default function ProductComparisonPage({
                         isBestDeal={storePrice.isBestDeal}
                         priceDifference={storePrice.priceDifference}
                         productUrl={storePrice.productUrl}
+                        productId={productId}
+                        productName={productName}
+                        productImage={productImage}
+                        category={category}
                       />
                     </View>
                   );

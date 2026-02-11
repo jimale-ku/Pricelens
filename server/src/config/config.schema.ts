@@ -34,6 +34,8 @@ export const envSchema = z.object({
   BRIGHT_DATA_ZONE: z.string().optional(),
   APIFY_API_KEY: z.string().optional(), // Apify actors API (for gas prices, etc.)
   SERPAPI_KEY: z.string().optional(), // Google Shopping API & Google Maps API
+  SERPER_API_KEY: z.string().optional(), // Serper.dev (Shopping + Maps/Places)
+  SERPER_CACHE_TTL_HOURS: z.coerce.number().min(1).max(168).optional(), // Serper response cache TTL (default 24, max 1 week)
   OILPRICEAPI_KEY: z.string().optional(), // Fuel price API
   SCRAPINGBEE_API_KEY: z.string().optional(), // Web scraping API (for GasBuddy, etc.)
   
@@ -43,6 +45,8 @@ export const envSchema = z.object({
   
   // Best Buy API
   BESTBUY_API_KEY: z.string().optional(),
+
+  OPENAI_API_KEY: z.string().optional(), // AI Receipt Scanner (vision)
 
   RATE_LIMIT_TTL: z.coerce.number().default(60),
   RATE_LIMIT_MAX: z.coerce.number().default(100),

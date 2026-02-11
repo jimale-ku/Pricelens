@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 // import { BullModule } from '@nestjs/bull';
-// import { ScheduleModule } from '@nestjs/schedule';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -21,9 +21,8 @@ import { StoreLocationsModule } from './store-locations/store-locations.module';
 import { AdvertisementsModule } from './advertisements/advertisements.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { ServicesModule } from './services/services.module';
-// Temporarily disabled - enable when ready to use subscriptions
-// import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-// import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 // import { JobsModule } from './jobs/jobs.module';
 // import { HealthModule } from './health/health.module';
 
@@ -34,7 +33,7 @@ import { ServicesModule } from './services/services.module';
       envFilePath: ['.env.local', '.env.development', '.env'],
       validate: (config) => envSchema.parse(config),
     }),
-    // ScheduleModule.forRoot(),
+    ScheduleModule.forRoot(),
     // BullModule.forRootAsync({
     //   inject: [ConfigService],
     //   useFactory: (config: ConfigService) => ({
@@ -68,7 +67,8 @@ import { ServicesModule } from './services/services.module';
     AdvertisementsModule,
     UserPreferencesModule,
     ServicesModule,
-    // SubscriptionsModule, // Temporarily disabled - enable when ready
+    SubscriptionsModule,
+    ReceiptsModule,
     // JobsModule, // Disabled - requires Redis
     // HealthModule, // Disabled - requires JobsModule
   ],

@@ -13,12 +13,14 @@
  */
 
 import { useLocalSearchParams } from 'expo-router';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { CATEGORIES, CATEGORY_LIST } from '@/constants/categories';
 import { getCategoryPattern } from '@/constants/categoryPatterns';
 import PatternALayout from '@/components/category/PatternALayout';
 import PatternBLayout from '@/components/category/PatternBLayout';
 import PatternCLayout from '@/components/category/PatternCLayout';
+import TiresLayout from '@/components/category/TiresLayout';
+import HotelsLayout from '@/components/category/HotelsLayout';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '@/components/AppHeader';
@@ -59,6 +61,8 @@ try {
   validateComponent(PatternALayout, 'PatternALayout');
   validateComponent(PatternBLayout, 'PatternBLayout');
   validateComponent(PatternCLayout, 'PatternCLayout');
+  validateComponent(TiresLayout, 'TiresLayout');
+  validateComponent(HotelsLayout, 'HotelsLayout');
   validateComponent(AppHeader, 'AppHeader');
 } catch (error) {
   console.error('🚨 FATAL: Component validation failed at module level:', error);
@@ -132,7 +136,7 @@ function getGradientFromColor(color: string): string[] {
     '#8B5CF6': ['#8B5CF6', '#7C3AED'], // purple
     '#EF4444': ['#EF4444', '#DC2626'], // red
     '#FBBF24': ['#FBBF24', '#F59E0B'], // yellow
-    '#EC4899': ['#EC4899', '#DB2777'], // pink
+    '#EC4899': ['#F472B6', '#EC4899'], // beauty pink gradient (softer to vibrant)
     '#6B7280': ['#6B7280', '#4B5563'], // gray
   };
   
@@ -176,14 +180,21 @@ class CategoryErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError && this.state.error) {
-      return <ErrorDisplay error={this.state.error} componentName="CategoryScreen (Error Boundary)" />;
+      // CRITICAL: Don't let error boundary cause navigation - show error on page
+      console.error('🚨 Error Boundary caught error:', this.state.error);
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
+          <AppHeader />
+          <ErrorDisplay error={this.state.error} componentName="CategoryScreen (Error Boundary)" />
+        </SafeAreaView>
+      );
     }
     return this.props.children;
   }
 }
 
 function CategoryScreenContent() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, q } = useLocalSearchParams<{ slug: string; q?: string }>();
   const [renderError, setRenderError] = useState<{ error: Error | string; component: string } | null>(null);
   
   
@@ -193,6 +204,9 @@ function CategoryScreenContent() {
   const [subcategoryCounts, setSubcategoryCounts] = useState<Record<string, number>>({});
   const [isLoadingBackend, setIsLoadingBackend] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
+  // Progressive loading: show items as they arrive
+  const [progressiveProducts, setProgressiveProducts] = useState<any[]>([]);
+  const [isProgressiveLoading, setIsProgressiveLoading] = useState(false);
   
   // Validate AppHeader is available
   if (!AppHeader) {
@@ -220,52 +234,105 @@ function CategoryScreenContent() {
   const categoryById = slug ? CATEGORIES[slug] : null;
   const categoryData = category || categoryById;
   
+  // CRITICAL: Store AbortControllers to cancel pending requests when category changes
+  const abortControllersRef = useRef<Set<AbortController>>(new Set());
+  
   // Fetch stores and products from backend when category changes
   useEffect(() => {
     if (!slug || !categoryData) return;
     
+    // CRITICAL: Cancel ALL pending requests from previous category
+    abortControllersRef.current.forEach(controller => {
+      try {
+        controller.abort();
+      } catch (e) {
+        // Ignore errors when aborting
+      }
+    });
+    abortControllersRef.current.clear();
+    
+    // Reset loading state immediately
     setIsLoadingBackend(true);
     setBackendError(null);
     
-    // Set a maximum loading time - if backend doesn't respond in 8 seconds, show page anyway
-    const maxLoadingTimeout = setTimeout(() => {
-      console.warn(`⏱️ Backend fetch timeout for ${slug}, showing page with fallback data`);
-      setIsLoadingBackend(false);
-    }, 8000);
+    // Create new AbortController for this category
+    const controller = new AbortController();
+    abortControllersRef.current.add(controller);
     
-    // Fetch data from backend (stores, products, and subcategory counts)
+    // Use 15s timeout for categories that rely on SerpAPI/backend (groceries, electronics, books, etc.)
+    // so the product fetch has time to complete; avoids endless "Loading products..." when backend is slow
+    const slowCategories = ['books', 'groceries', 'electronics', 'kitchen', 'beauty-products', 'beauty', 'video-games', 'sports-equipment', 'office', 'mattresses', 'pet-supplies', 'household', 'home-accessories', 'furniture', 'clothing', 'footwear'];
+    const maxLoadingTimeoutDuration = slowCategories.includes(slug) ? 15000 : 8000;
+    const maxLoadingTimeout = setTimeout(() => {
+      if (!controller.signal.aborted) {
+        setIsLoadingBackend(false);
+        setBackendError('Request timed out. Check that the backend is running and API_BASE_URL in client/constants/api.ts matches your PC IP.');
+      }
+    }, maxLoadingTimeoutDuration);
+    
+    // Show loading state initially
+    setIsProgressiveLoading(true);
+    setProgressiveProducts([]);
+    
+    // Fetch stores and subcategory counts first (fast)
     Promise.all([
       fetchCategoryStores(slug),
-      fetchCategoryProducts(slug, 6),
       fetchSubcategoryCounts(slug),
     ])
-      .then(([stores, products, counts]) => {
-        clearTimeout(maxLoadingTimeout);
+      .then(([stores, counts]) => {
+        if (controller.signal.aborted) return;
         
-        // Format stores: ['All Stores', ...store names]
-        // Filter out any undefined/null stores
         const formattedStores = stores.length > 0
           ? ['All Stores', ...stores.filter(s => s && s.name).map(s => s.name)]
           : [];
         
         setBackendStores(formattedStores);
-        setBackendProducts(products);
         setSubcategoryCounts(counts || {});
+      })
+      .catch(() => {
+        // Ignore errors for stores/counts
+      });
+    
+    // Fetch products - show immediately when loaded (no progressive delays)
+    fetchCategoryProducts(slug, 6)
+      .then((products) => {
+        // CRITICAL: Check if request was aborted before updating state
+        if (controller.signal.aborted) {
+          return;
+        }
+        
+        clearTimeout(maxLoadingTimeout);
+        abortControllersRef.current.delete(controller);
+        
+        // Show all products immediately (no progressive delays)
+        setProgressiveProducts(products);
+        setBackendProducts(products);
         setIsLoadingBackend(false);
+        setIsProgressiveLoading(false);
       })
       .catch((error) => {
-        clearTimeout(maxLoadingTimeout);
-        
-        // Silently handle network errors - app will use fallback data
-        // Only log if it's not a network error (which is expected when backend is offline)
-        if (error?.name !== 'AbortError' && error?.message && !error.message.includes('Network request failed') && !error.message.includes('aborted')) {
-          console.error('Error fetching category data from backend:', error);
+        // CRITICAL: Don't update state if request was aborted
+        if (controller.signal.aborted) {
+          return;
         }
+        
+        clearTimeout(maxLoadingTimeout);
+        abortControllersRef.current.delete(controller);
+        
         setBackendError(error.message);
         setBackendStores([]);
         setBackendProducts([]);
+        setProgressiveProducts([]);
         setIsLoadingBackend(false);
+        setIsProgressiveLoading(false);
       });
+    
+    // Cleanup: Cancel requests when component unmounts or category changes
+    return () => {
+      controller.abort();
+      abortControllersRef.current.delete(controller);
+      clearTimeout(maxLoadingTimeout);
+    };
   }, [slug, categoryData]);
 
   if (!categoryData) {
@@ -351,7 +418,18 @@ function CategoryScreenContent() {
     (process.env.EXPO_PUBLIC_USE_SAMPLE_DATA || '').toLowerCase() === 'true';
 
   // Use backend products if available, otherwise optional (opt-in) sample data - ensure no undefined
+  // Use progressive products when available, otherwise fallback to backend products
   const defaultProducts = useMemo(() => {
+    // Priority 1: Progressive products (shows items as they load)
+    if (progressiveProducts.length > 0) {
+      return progressiveProducts;
+    }
+    // Priority 2: All backend products
+    if (backendProducts.length > 0) {
+      return backendProducts;
+    }
+    
+    // Original logic for fallback products
     let products: any[] = [];
     
     // Priority 1: Backend products (from database/PriceAPI)
@@ -386,26 +464,9 @@ function CategoryScreenContent() {
       }
       return true;
     });
-  }, [backendProducts, slug, pattern, categoryData?.id, categoryData?.name, categoryData?.stores, stores, useSampleData]);
-
-  // Show loading state while fetching from backend (with timeout)
-  // Only show loading for Pattern A, Pattern B and C don't need backend data initially
-  if (isLoadingBackend && pattern === 'A') {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
-        <AppHeader />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#60a5fa" />
-          <Text style={{ color: '#8b95a8', marginTop: 12, fontSize: 14 }}>
-            Loading {categoryData.name}...
-          </Text>
-          <Text style={{ color: '#64748b', marginTop: 8, fontSize: 12 }}>
-            Using fallback data if backend unavailable
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  }, [progressiveProducts, backendProducts, slug, pattern, categoryData?.id, categoryData?.name, categoryData?.stores, stores, useSampleData]);
+  
+  // The PatternALayout component will handle showing products when they arrive
 
   // Render based on pattern with comprehensive error handling
   try {
@@ -424,7 +485,9 @@ function CategoryScreenContent() {
         return <ErrorDisplay error={errorMsg} componentName="PatternALayout" />;
       }
       
-      if (!IconComponent || stores === undefined || defaultProducts === undefined) {
+      // CRITICAL: Allow rendering even with empty products - show page with "No products" message
+      // Don't block rendering - products will load in background
+      if (!IconComponent || stores === undefined) {
         return (
           <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
             <AppHeader />
@@ -435,6 +498,9 @@ function CategoryScreenContent() {
           </SafeAreaView>
         );
       }
+      
+      // Ensure defaultProducts is always an array (even if empty) - now includes progressive loading
+      const safeDefaultProducts = Array.isArray(defaultProducts) ? defaultProducts : [];
       
       // Double-check that IconComponent is actually a function/component
       if (typeof IconComponent !== 'function') {
@@ -451,25 +517,91 @@ function CategoryScreenContent() {
           );
       
       // Ensure all arrays are valid and don't contain undefined
+      // CRITICAL: Always provide an array (even if empty) - don't block rendering
       const safeStores = Array.isArray(stores) ? stores.filter(Boolean) : ['All Stores'];
       const safeSubcategories = Array.isArray(mappedSubcategories) ? mappedSubcategories.filter(Boolean) : [];
       const safeProducts = Array.isArray(defaultProducts) ? defaultProducts.filter(Boolean) : [];
       
+      // Log for debugging
+      console.log(`📦 [${slug}] Rendering PatternALayout with ${safeProducts.length} products, ${safeStores.length} stores`);
       
-      return (
-        <PatternALayout
-          categorySlug={slug || ''}
-          categoryName={categoryData?.name || 'Category'}
-          categoryDescription={categoryData?.description || ''}
-          categoryIcon={SafeIconComponent}
-          iconGradient={iconGradient || ['#3B82F6', '#8B5CF6']}
-          stores={safeStores}
-          subcategories={safeSubcategories}
-          defaultProducts={safeProducts}
-          categoryId={categoryData?.id}
-        />
-      );
+      // CRITICAL: Wrap in try-catch to prevent crashes that cause navigation
+      try {
+        return (
+          <PatternALayout
+            categorySlug={slug || ''}
+            categoryName={categoryData?.name || 'Category'}
+            categoryDescription={categoryData?.description || ''}
+            categoryIcon={SafeIconComponent}
+            iconGradient={iconGradient || ['#3B82F6', '#8B5CF6']}
+            stores={safeStores}
+            subcategories={safeSubcategories}
+            defaultProducts={safeProducts}
+            categoryId={categoryData?.id}
+            backgroundImage={(categoryData as any)?.backgroundImage}
+            initialSearchQuery={q ? String(q) : undefined}
+            initialLoadComplete={!isLoadingBackend}
+            backendConnectionError={backendError}
+            isProgressiveLoading={isProgressiveLoading}
+          />
+        );
+      } catch (renderError) {
+        console.error('❌ Error rendering PatternALayout:', renderError);
+        return (
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
+            <AppHeader />
+            <ErrorDisplay error={renderError as Error} componentName="PatternALayout" />
+          </SafeAreaView>
+        );
+      }
     } else if (pattern === 'B') {
+      // Special case: Tires uses custom layout matching Figma design
+      if (slug === 'tires') {
+        if (!TiresLayout) {
+          const errorMsg = `TiresLayout is undefined! Type: ${typeof TiresLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="TiresLayout" />;
+        }
+        
+        try {
+          return (
+            <TiresLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Tires'}
+              categoryDescription={categoryData?.description || 'Compare tire prices from top retailers and installers'}
+              categoryIcon={categoryData?.icon || 'car'}
+              iconGradient={iconGradient || ['#06B6D4', '#3B82F6']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering TiresLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="TiresLayout" />;
+        }
+      }
+
+      if (slug === 'hotels') {
+        if (!HotelsLayout) {
+          const errorMsg = `HotelsLayout is undefined! Type: ${typeof HotelsLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="HotelsLayout" />;
+        }
+        
+        try {
+          return (
+            <HotelsLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Hotels'}
+              categoryDescription={categoryData?.description || 'Compare hotel prices from top booking sites'}
+              categoryIcon={categoryData?.icon || 'bed'}
+              iconGradient={iconGradient || ['#06B6D4', '#8B5CF6']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering HotelsLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="HotelsLayout" />;
+        }
+      }
+      
       // Pattern B: Direct Comparison Table
       // Pattern B doesn't need backend data initially, so don't wait for it
       if (!PatternBLayout) {
@@ -550,22 +682,37 @@ function CategoryScreenContent() {
           ],
         });
       } else if (slug === 'tires') {
+        // Tires uses custom fields matching Figma design: Year, Make, Model (required), Tire Size (optional), Zip Code (required)
         searchFields.push(
           {
-            id: 'tireSize',
-            label: 'Tire Size',
+            id: 'year',
+            label: 'Year *',
             type: 'text',
-            placeholder: 'e.g., 205/55R16',
+            placeholder: 'e.g., 2020',
           },
           {
-            id: 'vehicle',
-            label: 'Vehicle Type',
-            type: 'select',
-            options: [
-              { value: 'sedan', label: 'Sedan' },
-              { value: 'suv', label: 'SUV' },
-              { value: 'truck', label: 'Truck' },
-            ],
+            id: 'make',
+            label: 'Make *',
+            type: 'text',
+            placeholder: 'e.g., Toyota',
+          },
+          {
+            id: 'model',
+            label: 'Model *',
+            type: 'text',
+            placeholder: 'e.g., RAV4',
+          },
+          {
+            id: 'tireSize',
+            label: 'Tire Size (Optional)',
+            type: 'text',
+            placeholder: 'e.g., P225/65R17',
+          },
+          {
+            id: 'zipCode',
+            label: 'Zip Code *',
+            type: 'text',
+            placeholder: 'e.g., 90210',
           }
         );
       } else if (slug === 'mattresses') {
@@ -868,7 +1015,13 @@ function CategoryScreenContent() {
     }
   } catch (error) {
     console.error('❌ FATAL ERROR in CategoryScreen render:', error);
-    return <ErrorDisplay error={error as Error} componentName="CategoryScreen" />;
+    // CRITICAL: Don't let errors cause navigation - show error on page
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
+        <AppHeader />
+        <ErrorDisplay error={error as Error} componentName="CategoryScreen" />
+      </SafeAreaView>
+    );
   }
 
   // Fallback (should never reach here)

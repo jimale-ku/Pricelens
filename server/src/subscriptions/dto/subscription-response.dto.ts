@@ -12,6 +12,9 @@ export class SubscriptionResponseDto {
     name: string;
     tier: string;
     price: number;
+    priceYearly?: number | null;
+    stripePriceId?: string | null;
+    stripePriceIdYearly?: string | null;
     features: any;
     maxSearches?: number;
     maxStores?: number;

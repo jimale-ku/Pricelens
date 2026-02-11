@@ -77,9 +77,26 @@ async function bootstrap() {
     const host = '0.0.0.0'; // Listen on all network interfaces (not just localhost)
     console.log(`7️⃣ Attempting to listen on ${host}:${port}...`);
     await app.listen(port, host);
+    
+    // Get current network IP address for better logging
+    const os = require('os');
+    const networkInterfaces = os.networkInterfaces();
+    let currentIP = 'localhost';
+    for (const interfaceName in networkInterfaces) {
+      const addresses = networkInterfaces[interfaceName];
+      for (const address of addresses) {
+        if (address.family === 'IPv4' && !address.internal) {
+          currentIP = address.address;
+          break;
+        }
+      }
+      if (currentIP !== 'localhost') break;
+    }
+    
     console.log(`🚀 Nest application successfully started on ${host}:${port}`);
     console.log(`📚 Swagger documentation available at http://localhost:${port}/api`);
-    console.log(`🌐 API accessible at http://192.168.201.105:${port}`);
+    console.log(`🌐 API accessible at http://${currentIP}:${port}`);
+    console.log(`💡 Update client/constants/api.ts with IP: ${currentIP}`);
   } catch (error) {
     console.error('❌ Error starting Nest application:', error);
     process.exit(1);

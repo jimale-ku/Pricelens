@@ -290,20 +290,27 @@ enum SubscriptionStatus {
   TRIALING
 }
 
+// FREE = 0, BASIC = 1, PRO = 2, PREMIUM = 3. PLUS is legacy (treat as PRO).
 enum SubscriptionTier {
   FREE
-  PLUS
+  PLUS    // legacy; treat as PRO
+  BASIC
+  PRO
+  PREMIUM
 }
 
 model SubscriptionPlan {
-  id                String         @id @default(uuid())
-  name              String         @unique // "Free", "Plus"
-  tier              SubscriptionTier @unique
-  price             Decimal        @db.Decimal(10, 2) @default(0)
-  currency          String         @default("USD")
-  interval          String         // "month", "year"
-  stripePriceId     String?        @unique
-  features          Json           // Array of feature strings
+  id                  String         @id @default(uuid())
+  name                String         @unique // "Free", "Basic", "Pro", "Premium"
+  tier                SubscriptionTier @unique
+  price               Decimal        @db.Decimal(10, 2) @default(0)
+  priceYearly         Decimal?       @db.Decimal(10, 2) // optional yearly price (e.g. 2 months free)
+  currency            String         @default("USD")
+  interval            String         // "month", "year"
+  stripePriceId       String?        @unique // monthly Stripe Price ID
+  stripePriceIdYearly String?        @unique // yearly Stripe Price ID
+  trialPeriodDays     Int?           // e.g. 30 for 30-day free trial
+  features            Json           // Array of feature strings
   maxSearches       Int?           // null = unlimited
   maxStores         Int?           // null = unlimited
   maxFavorites      Int?           // null = unlimited
@@ -369,3 +376,13 @@ model UserUsage {
   @@index([userId, date])
 }
 
+// Serper API response cache – avoid repeated Serper calls for same query
+model SerperCache {
+  id        String   @id @default(uuid())
+  cacheKey  String   @unique // e.g. "maps:gym 90210" or hash of params
+  type      String   // "maps" | "shopping" | "search"
+  response  Json     // raw API response
+  expiresAt DateTime
+  createdAt DateTime @default(now())  @@index([cacheKey])
+  @@index([expiresAt])
+}

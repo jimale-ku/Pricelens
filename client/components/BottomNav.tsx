@@ -55,7 +55,10 @@ export default function BottomNav() {
   };
 
   const handlePress = (route: string) => {
-    router.push(route as any);
+    // Use replace when switching to a tab so we don't stack (e.g. from category → profile)
+    if (pathname !== route && pathname !== route + '/') {
+      router.replace(route as any);
+    }
   };
 
   return (

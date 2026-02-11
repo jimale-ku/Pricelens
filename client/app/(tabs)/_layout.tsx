@@ -121,6 +121,44 @@ export default function TabsLayout() {
           href: null, // Hide from bottom tab bar, only accessible via header pills
         }}
       />
+      <Tabs.Screen
+        name="favorites"
+        options={{
+          title: 'Favorites',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="heart" size={size} color={color} />
+          ),
+          href: null, // Not a main tab - access via Lists card or Profile
+        }}
+      />
+      <Tabs.Screen
+        name="purchase-history"
+        options={{
+          title: 'Purchase History',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="receipt" size={size} color={color} />
+          ),
+          href: null, // Belongs inside Lists > History
+        }}
+      />
+      <Tabs.Screen
+        name="alerts"
+        options={{
+          href: null, // Hidden from bottom nav - access via Profile > Premium Features or Plus page
+        }}
+      />
+      <Tabs.Screen
+        name="barcode-scanner"
+        options={{
+          href: null, // Hidden from bottom nav - access via Profile > Premium Features or Plus page
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          href: null, // Hidden from bottom nav - access via Profile > App Settings
+        }}
+      />
     </Tabs>
   );
 }

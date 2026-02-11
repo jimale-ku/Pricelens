@@ -7,8 +7,9 @@ import {
   Req,
   HttpCode,
   HttpStatus,
-  RawBodyRequest,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import * as Express from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionsService } from './subscriptions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -66,7 +67,7 @@ export class SubscriptionsController {
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stripe webhook endpoint' })
-  async handleWebhook(@Req() req: RawBodyRequest<Request>) {
+  async handleWebhook(@Req() req: RawBodyRequest<Express.Request>) {
     if (!Stripe) {
       return { received: false, message: 'Stripe not configured' };
     }

@@ -92,7 +92,10 @@ function CategoryPill({ label, iconName, isActive, onPress }: CategoryPillProps)
   );
 }
 
-export default function CategoryNavbar({ onCategoryChange, initialActive = 'search' }: CategoryNavbarProps) {
+// Default to first category instead of 'search'
+const DEFAULT_CATEGORY = 'all-retailers'; // First category in the list
+
+export default function CategoryNavbar({ onCategoryChange, initialActive = DEFAULT_CATEGORY }: CategoryNavbarProps) {
   const [activeCategory, setActiveCategory] = useState(initialActive);
   const scrollViewRef = useRef<ScrollView>(null);
   const containerRef = useRef<View>(null);
@@ -133,11 +136,11 @@ export default function CategoryNavbar({ onCategoryChange, initialActive = 'sear
   };
 
   useEffect(() => {
-    // Initialize indicator position on mount
+    // Initialize indicator position on mount - use first category instead of 'search'
     setTimeout(() => {
-      const searchPill = pillRefs.current['search'];
-      if (searchPill && containerRef.current) {
-        searchPill.measureLayout(
+      const firstCategoryPill = pillRefs.current[activeCategory] || pillRefs.current[DEFAULT_CATEGORY];
+      if (firstCategoryPill && containerRef.current) {
+        firstCategoryPill.measureLayout(
           containerRef.current as any,
           (x, y, width, height) => {
             indicatorLeft.setValue(x + 6);
@@ -147,10 +150,12 @@ export default function CategoryNavbar({ onCategoryChange, initialActive = 'sear
         );
       }
     }, 100);
-  }, []);
+  }, [activeCategory]);
 
   const categories: Array<{ id: IconName; label: string }> = [
-    { id: 'search', label: 'Search' },
+    // Removed 'search' - it's now handled by bottom navigation
+    // Removed 'list', 'plus', 'profile', 'developer' - these are handled by bottom nav or other navigation
+    { id: 'allretailers', label: 'All Retailers' },
     { id: 'groceries', label: 'Groceries' },
     { id: 'electronics', label: 'Electronics' },
     { id: 'kitchen', label: 'Kitchen' },
@@ -182,17 +187,12 @@ export default function CategoryNavbar({ onCategoryChange, initialActive = 'sear
     { id: 'office', label: 'Office' },
     { id: 'mattresses', label: 'Mattresses' },
     { id: 'furniture', label: 'Furniture' },
-    { id: 'homedecor', label: 'Home Decor' },
     { id: 'moving', label: 'Moving' },
     { id: 'storage', label: 'Storage' },
     { id: 'spa', label: 'Spa' },
     { id: 'tools', label: 'Tools' },
     { id: 'mealkits', label: 'Meal Kits' },
     { id: 'pets', label: 'Pets' },
-    { id: 'list', label: 'List' },
-    { id: 'plus', label: 'Plus' },
-    { id: 'profile', label: 'Profile' },
-    { id: 'developer', label: 'Developer' },
   ];
 
   return (

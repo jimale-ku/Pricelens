@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from '../prisma/prisma.module';
 import { WalmartMockIntegration } from './services/walmart-mock.integration';
 import { AmazonMockIntegration } from './services/amazon-mock.integration';
 import { TargetMockIntegration } from './services/target-mock.integration';
@@ -7,6 +8,9 @@ import { PriceApiService } from './services/priceapi.service';
 import { MultiStorePriceService } from './services/multi-store-price.service';
 import { MultiStoreScrapingService } from './services/multi-store-scraping.service';
 import { SerpAPIMapsService } from './services/serpapi-maps.service';
+import { SerperCacheService } from './services/serper-cache.service';
+import { SerperCacheCleanupService } from './services/serper-cache-cleanup.service';
+import { GoogleShoppingScraperService } from './services/google-shopping-scraper.service';
 import { FuelPriceService } from './services/fuel-price.service';
 import { ApifyGasPriceService } from './services/apify-gas-price.service';
 // Store Adapters
@@ -28,7 +32,7 @@ import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
  * - PricesAPI: Fetches prices from 100+ retailers (Walmart, Target, Costco, Best Buy, etc.)
  */
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, PrismaModule],
   providers: [
     WalmartMockIntegration,
     AmazonMockIntegration,
@@ -37,6 +41,9 @@ import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
     MultiStorePriceService,
     MultiStoreScrapingService,
     SerpAPIMapsService,
+    SerperCacheService,
+    SerperCacheCleanupService,
+    GoogleShoppingScraperService,
     FuelPriceService,
     ApifyGasPriceService,
     // Store Adapters
@@ -53,6 +60,9 @@ import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
     MultiStorePriceService,
     MultiStoreScrapingService,
     SerpAPIMapsService,
+    SerperCacheService,
+    SerperCacheCleanupService,
+    GoogleShoppingScraperService,
     FuelPriceService,
     ApifyGasPriceService,
     // Store Adapters

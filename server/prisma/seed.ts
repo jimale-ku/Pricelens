@@ -1,26 +1,26 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SubscriptionTier } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting database seed...');
 
-  // Create subscription plans
+  // Create subscription plans: Free + 3 paid tiers (Basic, Pro, Premium)
   const freePlan = await prisma.subscriptionPlan.upsert({
-    where: { tier: 'FREE' },
+    where: { tier: SubscriptionTier.FREE },
     update: {},
     create: {
       name: 'Free',
-      tier: 'FREE',
+      tier: SubscriptionTier.FREE,
       price: 0,
       currency: 'USD',
       interval: 'month',
       features: [
-        'Basic product search (10 searches/day)',
-        'View prices from 3 stores max',
-        'Save up to 5 favorites',
-        'Create 1 shopping list',
-        'Basic price alerts (1 active alert)',
+        '10 searches per day',
+        'Up to 3 stores per product',
+        '5 favorites',
+        '1 shopping list',
+        '1 price alert',
       ],
       maxSearches: 10,
       maxStores: 3,
@@ -33,40 +33,105 @@ async function main() {
     },
   });
 
-  const plusPlan = await prisma.subscriptionPlan.upsert({
-    where: { tier: 'PLUS' },
-    update: {},
+  const basicPlan = await prisma.subscriptionPlan.upsert({
+    where: { tier: SubscriptionTier.BASIC },
+    update: { trialPeriodDays: 30, price: 4.99 },
     create: {
-      name: 'Plus',
-      tier: 'PLUS',
-      price: 9.99,
+      name: 'Basic',
+      tier: SubscriptionTier.BASIC,
+      price: 4.99,
+      priceYearly: 49.99,
       currency: 'USD',
       interval: 'month',
-      stripePriceId: process.env.STRIPE_PRICE_ID_PLUS_MONTHLY || null,
+      trialPeriodDays: 30,
+      stripePriceId: process.env.STRIPE_PRICE_ID_BASIC_MONTHLY || null,
+      stripePriceIdYearly: process.env.STRIPE_PRICE_ID_BASIC_YEARLY || null,
       features: [
-        'Unlimited product searches',
-        'View prices from all stores (10+)',
+        '50 searches per day',
+        'Up to 10 stores per product',
+        '20 favorites',
+        '5 shopping lists',
+        '5 price alerts',
+        '7-day price history',
+      ],
+      maxSearches: 50,
+      maxStores: 10,
+      maxFavorites: 20,
+      maxLists: 5,
+      maxAlerts: 5,
+      hasPriceHistory: true,
+      hasAdvancedFilters: false,
+      hasAdFree: false,
+    },
+  });
+
+  const proPlan = await prisma.subscriptionPlan.upsert({
+    where: { tier: SubscriptionTier.PRO },
+    update: {},
+    create: {
+      name: 'Pro',
+      tier: SubscriptionTier.PRO,
+      price: 12,
+      priceYearly: 120,
+      currency: 'USD',
+      interval: 'month',
+      stripePriceId: process.env.STRIPE_PRICE_ID_PRO_MONTHLY || null,
+      stripePriceIdYearly: process.env.STRIPE_PRICE_ID_PRO_YEARLY || null,
+      features: [
+        '200 searches per day',
+        'Up to 25 stores per product',
         'Unlimited favorites',
-        'Unlimited shopping lists',
-        'Unlimited price alerts',
-        '90-day price history',
+        'Unlimited lists',
+        'Unlimited alerts',
+        '30-day price history',
         'Advanced filters & sorting',
-        'Save unlimited comparisons',
-        'Priority customer support',
         'Ad-free experience',
       ],
-      maxSearches: null, // unlimited
-      maxStores: null, // unlimited
-      maxFavorites: null, // unlimited
-      maxLists: null, // unlimited
-      maxAlerts: null, // unlimited
+      maxSearches: 200,
+      maxStores: 25,
+      maxFavorites: null,
+      maxLists: null,
+      maxAlerts: null,
       hasPriceHistory: true,
       hasAdvancedFilters: true,
       hasAdFree: true,
     },
   });
 
-  console.log(`✅ Created subscription plans: ${freePlan.name}, ${plusPlan.name}`);
+  const premiumPlan = await prisma.subscriptionPlan.upsert({
+    where: { tier: SubscriptionTier.PREMIUM },
+    update: {},
+    create: {
+      name: 'Premium',
+      tier: SubscriptionTier.PREMIUM,
+      price: 25,
+      priceYearly: 250,
+      currency: 'USD',
+      interval: 'month',
+      stripePriceId: process.env.STRIPE_PRICE_ID_PREMIUM_MONTHLY || null,
+      stripePriceIdYearly: process.env.STRIPE_PRICE_ID_PREMIUM_YEARLY || null,
+      features: [
+        'Unlimited searches',
+        'All stores (30+)',
+        'Unlimited favorites & lists',
+        'Unlimited alerts',
+        '90-day price history',
+        'Advanced filters & sorting',
+        'Ad-free experience',
+        'Priority support',
+      ],
+      maxSearches: null,
+      maxStores: null,
+      maxFavorites: null,
+      maxLists: null,
+      maxAlerts: null,
+      hasPriceHistory: true,
+      hasAdvancedFilters: true,
+      hasAdFree: true,
+    },
+  });
+
+  console.log(`✅ Created subscription plans: ${freePlan.name}, ${basicPlan.name}, ${proPlan.name}, ${premiumPlan.name}`);
 
   // Create categories
   const categories = await Promise.all([

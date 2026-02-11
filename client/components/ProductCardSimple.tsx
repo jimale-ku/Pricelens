@@ -13,11 +13,14 @@
  * - Add to List button (optional)
  */
 
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { addItemToList, getCurrentList } from '@/utils/listService';
+import { toggleFavorite, isFavorite as checkIsFavorite } from '@/utils/favoritesService';
+import type { FavoriteProduct } from '@/utils/favoritesService';
 
 interface ProductCardSimpleProps {
   productId: string | number;
@@ -45,6 +48,18 @@ export default function ProductCardSimple({
   const router = useRouter();
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [shouldLoadImage, setShouldLoadImage] = useState(false);
+  const [isAddingToList, setIsAddingToList] = useState(false);
+  const cardRef = useRef<View>(null);
+
+  // Load favorite status on mount
+  useEffect(() => {
+    const loadFavoriteStatus = async () => {
+      const favorite = await checkIsFavorite(productId.toString());
+      setIsFavorite(favorite);
+    };
+    loadFavoriteStatus();
+  }, [productId]);
 
   // Generate product slug from product name (with safety check)
   const productSlug = (productName || 'unnamed-product')
@@ -54,32 +69,103 @@ export default function ProductCardSimple({
 
   // Handle "View Prices" button - navigate to comparison page
   const handleViewPrices = () => {
-    // Navigate to: /category/[categorySlug]/[productSlug]/compare?productId=[id]
-    // Pass product ID as query param so we can fetch directly by ID instead of searching by name
-    const productIdParam = productId ? `?productId=${encodeURIComponent(productId)}` : '';
-    router.push(`/category/${categorySlug}/${productSlug}/compare${productIdParam}`);
+    // Navigate to: /category/[categorySlug]/[productSlug]/compare?productId=[id]&productName=[name]
+    // Pass both product ID and actual product name to ensure correct matching
+    const params = new URLSearchParams();
+    if (productId) {
+      params.append('productId', productId.toString());
+    }
+    // Pass actual product name (not slug) to ensure correct search if ID lookup fails
+    if (productName) {
+      params.append('productName', productName);
+    }
+    const queryString = params.toString();
+    router.push(`/category/${categorySlug}/${productSlug}/compare${queryString ? `?${queryString}` : ''}`);
   };
 
   // Handle favorite toggle
-  const handleToggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    // TODO: Save to backend/favorites
+  const handleToggleFavorite = async () => {
+    try {
+      const favoriteProduct: FavoriteProduct = {
+        productId: productId.toString(),
+        productName,
+        productImage,
+        category,
+        categorySlug,
+        minPrice,
+        storeCount,
+      };
+      
+      const result = await toggleFavorite(favoriteProduct);
+      setIsFavorite(result.isFavorite);
+      
+      if (result.success) {
+        // Optional: Show toast notification
+        // Alert.alert('', result.message);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
 
-  // Determine final image URL
+  // Handle add to list - add to current/default list
+  const handleAddToList = async () => {
+    if (isAddingToList) return;
+    
+    setIsAddingToList(true);
+    try {
+      // Get current list (grocery or default)
+      const currentList = await getCurrentList();
+      
+      // Create store prices array from available data
+      const storePrices = fullProductData?.storePrices || [];
+      
+      const result = await addItemToList(
+        productId.toString(),
+        productName,
+        productImage,
+        category,
+        storePrices,
+        minPrice,
+        undefined, // bestPriceStore
+        currentList.id // Use current list ID
+      );
+      
+      if (result.success) {
+        // Show brief success feedback (no alert to avoid interrupting flow)
+        // Alert.alert('Success', result.message);
+      } else {
+        Alert.alert('Error', result.message);
+      }
+    } catch (error) {
+      console.error('Error adding to list:', error);
+      Alert.alert('Error', 'Failed to add item to list');
+    } finally {
+      setIsAddingToList(false);
+    }
+  };
+
+
+  // Lazy load images - only load when component is mounted (for initial page load)
+  // This prevents loading all 6 images simultaneously, improving performance on slow WiFi
+  useEffect(() => {
+    // Small delay to prioritize visible items first
+    const timer = setTimeout(() => {
+      setShouldLoadImage(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Determine final image URL - accept any valid http(s) URL including placeholders
   let finalImageUri = 'https://via.placeholder.com/200x200/1e2736/8b95a8?text=No+Image';
   
   if (productImage && typeof productImage === 'string') {
     const trimmed = productImage.trim();
-    const isPlaceholder = trimmed.includes('placeholder') || 
-                         trimmed.includes('via.placeholder') ||
-                         trimmed.includes('example.com') ||
-                         trimmed === '' ||
-                         trimmed.length < 10;
-    
     const isValidUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    const isTestUrl = trimmed.includes('example.com');
     
-    if (isValidUrl && !isPlaceholder) {
+    // Accept any valid URL including placeholders (they're unique per product now)
+    if (isValidUrl && !isTestUrl && trimmed.length >= 10) {
       finalImageUri = trimmed;
     }
   }
@@ -104,7 +190,7 @@ export default function ProductCardSimple({
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        {imageError || finalImageUri.includes('placeholder') ? (
+        {imageError ? (
           <View style={{
             width: '100%',
             height: '100%',
@@ -116,7 +202,7 @@ export default function ProductCardSimple({
               No Image
             </Text>
           </View>
-        ) : (
+        ) : shouldLoadImage ? (
           <Image
             source={{ uri: finalImageUri }}
             style={{
@@ -126,7 +212,21 @@ export default function ProductCardSimple({
             resizeMode="cover"
             onError={() => setImageError(true)}
             onLoad={() => setImageError(false)}
+            // Performance optimizations
+            progressiveRenderingEnabled={true}
+            cache="force-cache"
           />
+        ) : (
+          // Show placeholder while waiting to load (prevents blocking)
+          <View style={{
+            width: '100%',
+            height: '100%',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#1e2736',
+          }}>
+            <Ionicons name="image-outline" size={32} color="#3b4758" />
+          </View>
         )}
       </View>
 
@@ -228,9 +328,11 @@ export default function ProductCardSimple({
           />
         </TouchableOpacity>
 
-        {/* Add to List Button (Optional - can be hidden if not needed) */}
+        {/* Add to List Button (+) */}
         <TouchableOpacity
           activeOpacity={0.8}
+          onPress={handleAddToList}
+          disabled={isAddingToList}
           style={{
             flex: 1,
             flexDirection: 'row',
@@ -238,12 +340,21 @@ export default function ProductCardSimple({
             justifyContent: 'center',
             paddingVertical: 10,
             borderRadius: 8,
-            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            backgroundColor: isAddingToList 
+              ? 'rgba(59, 130, 246, 0.2)' 
+              : 'rgba(59, 130, 246, 0.15)',
             borderWidth: 1,
-            borderColor: 'rgba(139, 149, 168, 0.2)',
+            borderColor: isAddingToList 
+              ? 'rgba(59, 130, 246, 0.4)' 
+              : 'rgba(59, 130, 246, 0.3)',
+            opacity: isAddingToList ? 0.7 : 1,
           }}
         >
-          <Ionicons name="add-outline" size={18} color="#8b95a8" />
+          <Ionicons 
+            name={isAddingToList ? "hourglass-outline" : "add"} 
+            size={18} 
+            color={isAddingToList ? "#3B82F6" : "#3B82F6"} 
+          />
         </TouchableOpacity>
       </View>
     </View>

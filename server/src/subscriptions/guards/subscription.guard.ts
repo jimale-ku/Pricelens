@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SUBSCRIPTION_TIER_KEY } from '../decorators/require-subscription.decorator';
+import { meetsMinimumTier } from '../subscription-tiers';
 
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
@@ -16,7 +17,7 @@ export class SubscriptionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredTier = this.reflector.getAllAndOverride<'FREE' | 'PLUS'>(
+    const requiredTier = this.reflector.getAllAndOverride<string>(
       SUBSCRIPTION_TIER_KEY,
       [context.getHandler(), context.getClass()],
     );
@@ -41,15 +42,14 @@ export class SubscriptionGuard implements CanActivate {
       throw new ForbiddenException('No subscription found');
     }
 
-    // Check if subscription is active
     if (subscription.status !== 'ACTIVE' && subscription.status !== 'TRIALING') {
       throw new ForbiddenException('Subscription is not active');
     }
 
-    // Check tier requirement
-    if (requiredTier === 'PLUS' && subscription.tier !== 'PLUS') {
+    // Require user's tier to meet or exceed the minimum (e.g. PRO allows PRO or PREMIUM)
+    if (!meetsMinimumTier(subscription.tier, requiredTier as any)) {
       throw new ForbiddenException(
-        'Plus subscription required. Please upgrade to access this feature.',
+        `${requiredTier} subscription or higher required. Please upgrade to access this feature.`,
       );
     }
 
