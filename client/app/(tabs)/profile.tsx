@@ -663,6 +663,29 @@ export default function ProfileScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
               </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => router.push('/developer-dashboard')}
+                activeOpacity={0.7}
+                style={{
+                  ...sectionStyle,
+                  padding: 20,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 16,
+                }}
+              >
+                <Ionicons name="bar-chart-outline" size={24} color="#94A3B8" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>
+                    Developer Dashboard
+                  </Text>
+                  <Text style={{ fontSize: 14, color: '#94A3B8' }}>
+                    Real-time analytics and user metrics
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+              </TouchableOpacity>
             </View>
 
             {/* Logout */}

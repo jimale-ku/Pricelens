@@ -21,6 +21,10 @@ import PatternBLayout from '@/components/category/PatternBLayout';
 import PatternCLayout from '@/components/category/PatternCLayout';
 import TiresLayout from '@/components/category/TiresLayout';
 import HotelsLayout from '@/components/category/HotelsLayout';
+import ApartmentsLayout from '@/components/category/ApartmentsLayout';
+import FoodDeliveryLayout from '@/components/category/FoodDeliveryLayout';
+import MassageLayout from '@/components/category/MassageLayout';
+import SpaLayout from '@/components/category/SpaLayout';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '@/components/AppHeader';
@@ -63,6 +67,10 @@ try {
   validateComponent(PatternCLayout, 'PatternCLayout');
   validateComponent(TiresLayout, 'TiresLayout');
   validateComponent(HotelsLayout, 'HotelsLayout');
+  validateComponent(ApartmentsLayout, 'ApartmentsLayout');
+  validateComponent(FoodDeliveryLayout, 'FoodDeliveryLayout');
+  validateComponent(MassageLayout, 'MassageLayout');
+  validateComponent(SpaLayout, 'SpaLayout');
   validateComponent(AppHeader, 'AppHeader');
 } catch (error) {
   console.error('🚨 FATAL: Component validation failed at module level:', error);
@@ -646,41 +654,208 @@ function CategoryScreenContent() {
           ],
         });
       } else if (slug === 'car-insurance') {
-        searchFields.push(
+        // Car Insurance: 3 sections matching Figma design
+        searchFields = [
+          // Section 1: Vehicle Information
           {
-            id: 'carType',
-            label: 'Car Type',
+            id: 'year',
+            label: 'Year',
+            type: 'text',
+            placeholder: 'e.g., 2020',
+            section: 'Vehicle Information',
+          },
+          {
+            id: 'make',
+            label: 'Make',
+            type: 'text',
+            placeholder: 'e.g., Honda, Toyota, Ford',
+            section: 'Vehicle Information',
+          },
+          {
+            id: 'model',
+            label: 'Model',
+            type: 'text',
+            placeholder: 'e.g., Civic, Camry, F-150',
+            section: 'Vehicle Information',
+          },
+          {
+            id: 'trim',
+            label: 'Trim',
+            type: 'text',
+            placeholder: 'e.g., LX, SE, XLT',
+            section: 'Vehicle Information',
+          },
+          // Section 2: Location & Driver Information
+          {
+            id: 'zipCode',
+            label: 'Zip Code',
+            type: 'text',
+            placeholder: 'e.g., 90210',
+            section: 'Location & Driver Information',
+          },
+          {
+            id: 'age',
+            label: 'Age',
+            type: 'text',
+            placeholder: 'e.g., 30',
+            section: 'Location & Driver Information',
+          },
+          {
+            id: 'yearsDriving',
+            label: 'Years Driving',
+            type: 'text',
+            placeholder: 'e.g., 10',
+            section: 'Location & Driver Information',
+          },
+          {
+            id: 'accidentsTickets',
+            label: 'Accidents/Tickets (Last 3 Years)',
             type: 'select',
+            placeholder: 'Select number',
+            section: 'Location & Driver Information',
             options: [
-              { value: 'sedan', label: 'Sedan' },
-              { value: 'suv', label: 'SUV' },
-              { value: 'truck', label: 'Truck' },
-              { value: 'coupe', label: 'Coupe' },
+              { value: '0', label: '0' },
+              { value: '1', label: '1' },
+              { value: '2', label: '2' },
+              { value: '3+', label: '3+' },
+            ],
+          },
+          // Section 3: Vehicle Usage
+          {
+            id: 'ownershipStatus',
+            label: 'Ownership Status',
+            type: 'select',
+            placeholder: 'Select status',
+            section: 'Vehicle Usage',
+            options: [
+              { value: 'owned', label: 'Owned' },
+              { value: 'financed', label: 'Financed' },
+              { value: 'leased', label: 'Leased' },
+            ],
+          },
+          {
+            id: 'dailyUsage',
+            label: 'Daily Usage',
+            type: 'select',
+            placeholder: 'Select usage',
+            section: 'Vehicle Usage',
+            options: [
+              { value: 'commute', label: 'Commute' },
+              { value: 'business', label: 'Business' },
+              { value: 'pleasure', label: 'Pleasure' },
+              { value: 'other', label: 'Other' },
+            ],
+          },
+          {
+            id: 'annualMiles',
+            label: 'Annual Miles',
+            type: 'select',
+            placeholder: 'Select mileage',
+            section: 'Vehicle Usage',
+            options: [
+              { value: '0-5k', label: '0-5,000' },
+              { value: '5k-10k', label: '5,000-10,000' },
+              { value: '10k-15k', label: '10,000-15,000' },
+              { value: '15k+', label: '15,000+' },
             ],
           },
           {
             id: 'coverage',
             label: 'Coverage Level',
             type: 'select',
+            placeholder: 'Select coverage',
+            section: 'Vehicle Usage',
             options: [
-              { value: 'liability', label: 'Liability Only' },
+              { value: 'minimum', label: 'Minimum (State Required)' },
+              { value: 'standard', label: 'Standard Coverage' },
               { value: 'full', label: 'Full Coverage' },
-              { value: 'comprehensive', label: 'Comprehensive' },
+              { value: 'premium', label: 'Premium Coverage' },
             ],
-          }
-        );
+          },
+        ];
       } else if (slug === 'renters-insurance') {
-        searchFields.push({
-          id: 'apartmentSize',
-          label: 'Apartment Size',
-          type: 'select',
-          options: [
-            { value: 'studio', label: 'Studio' },
-            { value: '1br', label: '1 Bedroom' },
-            { value: '2br', label: '2 Bedroom' },
-            { value: '3br', label: '3+ Bedroom' },
-          ],
-        });
+        // Full form matching Figma: ZIP, Personal Property Value, Deductible, Liability, Residence Type, Security, Sprinklers, Pets
+        searchFields = [
+          { id: 'zipCode', label: 'ZIP Code', type: 'text', placeholder: 'e.g., 90210' },
+          {
+            id: 'personalPropertyValue',
+            label: 'Personal Property Value',
+            type: 'select',
+            placeholder: 'Select coverage amount',
+            options: [
+              { value: '15k', label: '$15,000' },
+              { value: '25k', label: '$25,000' },
+              { value: '50k', label: '$50,000' },
+              { value: '75k', label: '$75,000' },
+              { value: '100k', label: '$100,000' },
+            ],
+          },
+          {
+            id: 'deductible',
+            label: 'Deductible',
+            type: 'select',
+            placeholder: 'Select deductible',
+            options: [
+              { value: '250', label: '$250' },
+              { value: '500', label: '$500' },
+              { value: '1000', label: '$1,000' },
+              { value: '2500', label: '$2,500' },
+            ],
+          },
+          {
+            id: 'liabilityCoverage',
+            label: 'Liability Coverage',
+            type: 'select',
+            placeholder: 'Select liability amount',
+            options: [
+              { value: '100k', label: '$100,000' },
+              { value: '300k', label: '$300,000' },
+              { value: '500k', label: '$500,000' },
+            ],
+          },
+          {
+            id: 'residenceType',
+            label: 'Residence Type',
+            type: 'select',
+            placeholder: 'Select type',
+            options: [
+              { value: 'apartment', label: 'Apartment' },
+              { value: 'condo', label: 'Condo' },
+              { value: 'house', label: 'House' },
+              { value: 'studio', label: 'Studio' },
+            ],
+          },
+          {
+            id: 'securitySystem',
+            label: 'Security System?',
+            type: 'select',
+            placeholder: 'Select',
+            options: [
+              { value: 'yes', label: 'Yes' },
+              { value: 'no', label: 'No' },
+            ],
+          },
+          {
+            id: 'fireSprinklers',
+            label: 'Fire Sprinklers?',
+            type: 'select',
+            placeholder: 'Select',
+            options: [
+              { value: 'yes', label: 'Yes' },
+              { value: 'no', label: 'No' },
+            ],
+          },
+          {
+            id: 'pets',
+            label: 'Do You Have Pets?',
+            type: 'select',
+            placeholder: 'Select',
+            options: [
+              { value: 'yes', label: 'Yes' },
+              { value: 'no', label: 'No' },
+            ],
+          },
+        ];
       } else if (slug === 'tires') {
         // Tires uses custom fields matching Figma design: Year, Make, Model (required), Tire Size (optional), Zip Code (required)
         searchFields.push(
@@ -750,6 +925,35 @@ function CategoryScreenContent() {
             { value: 'full', label: 'Full Service' },
           ],
         });
+      } else if (slug === 'nail-salons') {
+        searchFields = [
+          { id: 'zipCode', label: 'ZIP Code', type: 'text', placeholder: 'Enter ZIP code' },
+          {
+            id: 'serviceType',
+            label: 'Service Type',
+            type: 'select',
+            placeholder: 'Select service',
+            options: [
+              { value: 'manicure', label: 'Manicure' },
+              { value: 'pedicure', label: 'Pedicure' },
+              { value: 'both', label: 'Manicure + Pedicure' },
+              { value: 'gel', label: 'Gel Manicure' },
+              { value: 'acrylic', label: 'Acrylic Nails' },
+            ],
+          },
+          {
+            id: 'duration',
+            label: 'Duration',
+            type: 'select',
+            placeholder: 'Select duration',
+            options: [
+              { value: '30min', label: '30 minutes' },
+              { value: '45min', label: '45 minutes' },
+              { value: '60min', label: '60 minutes' },
+              { value: '90min', label: '90 minutes' },
+            ],
+          },
+        ];
       } else if (slug === 'rental-cars') {
         searchFields = [
           { id: 'location', label: 'Pickup Location', type: 'text', placeholder: 'Enter city or airport' },
@@ -765,6 +969,28 @@ function CategoryScreenContent() {
               { value: 'luxury', label: 'Luxury' },
             ],
           },
+        ];
+      } else if (slug === 'moving') {
+        searchFields = [
+          { id: 'distance', label: 'Distance (miles)', type: 'text', placeholder: 'e.g., 50' },
+          {
+            id: 'homeSize',
+            label: 'Home Size',
+            type: 'select',
+            placeholder: 'Select size',
+            options: [
+              { value: 'studio', label: 'Studio' },
+              { value: '1br', label: '1 Bedroom' },
+              { value: '2br', label: '2 Bedroom' },
+              { value: '3br', label: '3 Bedroom' },
+              { value: '4br', label: '4+ Bedroom' },
+              { value: 'house-small', label: 'Small House' },
+              { value: 'house-medium', label: 'Medium House' },
+              { value: 'house-large', label: 'Large House' },
+            ],
+          },
+          { id: 'fromZip', label: 'From ZIP', type: 'text', placeholder: 'e.g., 90210' },
+          { id: 'toZip', label: 'To ZIP', type: 'text', placeholder: 'e.g., 10001' },
         ];
       } else if (slug === 'hotels') {
         searchFields = [
@@ -915,8 +1141,77 @@ function CategoryScreenContent() {
           { id: 'price', label: 'Price/Week' },
           { id: 'meals', label: 'Meals/Week' },
         ];
+      } else if (slug === 'nail-salons') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'salon', label: 'Salon' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
+      } else if (slug === 'moving') {
+        tableColumns = [
+          { id: 'rank', label: 'Rank' },
+          { id: 'company', label: 'Company' },
+          { id: 'address', label: 'Address' },
+          { id: 'price', label: 'Price' },
+          { id: 'distance', label: 'Distance' },
+        ];
       }
       
+      // Renters Insurance: Figma content (Did you know?, tips, Ready to Save, providers)
+      const rentersDidYouKnow = slug === 'renters-insurance'
+        ? {
+            title: 'Did you know?',
+            body: '95% of renters are underinsured or have no coverage at all. Renters insurance typically costs only $15-30/month and protects your belongings, liability, and temporary housing costs.',
+          }
+        : undefined;
+      const rentersTips = slug === 'renters-insurance'
+        ? [
+            'Bundle with auto insurance for 15-25% discount on both policies',
+            'Increase your deductible to lower monthly premiums (if you have emergency savings)',
+            'Install security systems, smoke detectors, and deadbolts for safety discounts',
+            'Pay annually instead of monthly to save on processing fees (typically 5-10%)',
+            'Ask about discounts for being claims-free, military/student status, or professional affiliations',
+            'Document your belongings with photos/videos for easier claims and accurate coverage',
+            "Review coverage annually - don't over-insure if you've downsized or sold items",
+          ]
+        : undefined;
+      const rentersProviders = slug === 'renters-insurance'
+        ? ['Lemonade', 'State Farm', 'GEICO', 'Progressive', 'USAA', '+5 more']
+        : undefined;
+      
+      // Nail Salons: Add-ons section
+      const nailAddOns = slug === 'nail-salons'
+        ? [
+            { id: 'cuticle-care', label: 'Cuticle Care', price: '+$5' },
+            { id: 'paraffin-treatment', label: 'Paraffin Treatment', price: '+$10' },
+            { id: 'hand-foot-massage', label: 'Hand/Foot Massage', price: '+$8' },
+            { id: 'polish-change', label: 'Polish Change', price: '+$12' },
+            { id: 'nail-art', label: 'Nail Art', price: '+$15' },
+            { id: 'french-tips', label: 'French Tips', price: '+$10' },
+            { id: 'gel-removal', label: 'Gel Removal', price: '+$10' },
+          ]
+        : undefined;
+      
+      // Gym: Amenities section (checkboxes without prices)
+      const gymAmenities = slug === 'gym'
+        ? [
+            { id: 'basketball-court', label: 'Basketball Court', price: '' },
+            { id: 'rock-climbing', label: 'Rock Climbing', price: '' },
+            { id: 'cafe-juice-bar', label: 'Cafe/Juice Bar', price: '' },
+            { id: 'showers-lockers', label: 'Showers/Lockers', price: '' },
+          ]
+        : undefined;
+      
+      // Moving: Tip section
+      const movingTip = slug === 'moving'
+        ? {
+            title: 'Tip: Book 4-6 weeks in advance',
+            body: 'Summer months (May-Sept) are peak season with higher prices.',
+          }
+        : undefined;
+
       try {
         return (
           <PatternBLayout
@@ -927,6 +1222,19 @@ function CategoryScreenContent() {
             iconGradient={iconGradient || ['#3B82F6', '#8B5CF6']}
             searchFields={searchFields}
             tableColumns={tableColumns}
+            didYouKnow={rentersDidYouKnow}
+            moneySavingTips={rentersTips}
+            readyToSaveLabel={slug === 'renters-insurance' ? 'Ready to Save?' : undefined}
+            providerTags={rentersProviders}
+            formTitle={slug === 'renters-insurance' ? 'Get Your Quotes' : slug === 'car-insurance' ? 'Get Your Personalized Quotes' : slug === 'moving' ? 'Get Moving Quotes' : undefined}
+            searchButtonLabel={slug === 'renters-insurance' ? 'Get Quotes' : slug === 'car-insurance' ? 'Get Personalized Quotes' : slug === 'nail-salons' ? 'Compare Prices' : slug === 'gym' ? 'Compare Memberships' : slug === 'moving' ? 'Compare Quotes' : undefined}
+            searchButtonIcon={slug === 'nail-salons' || slug === 'gym' ? 'star' : slug === 'moving' ? 'search' : undefined}
+            showResetButton={slug === 'renters-insurance' || slug === 'car-insurance' || slug === 'moving'}
+            heroBadge={slug === 'renters-insurance' ? 'Plus Exclusive' : undefined}
+            formHeaderIcon={slug === 'car-insurance' ? 'shield' : slug === 'moving' ? 'car' : undefined}
+            addOns={nailAddOns || gymAmenities}
+            addOnsTitle={slug === 'gym' ? 'Amenities' : undefined}
+            tip={movingTip}
           />
         );
       } catch (renderError) {
@@ -934,6 +1242,102 @@ function CategoryScreenContent() {
         return <ErrorDisplay error={renderError as Error} componentName="PatternBLayout" />;
       }
     } else if (pattern === 'C') {
+      // Special case: Apartments uses custom layout matching Figma design
+      if (slug === 'apartments') {
+        if (!ApartmentsLayout) {
+          const errorMsg = `ApartmentsLayout is undefined! Type: ${typeof ApartmentsLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="ApartmentsLayout" />;
+        }
+        
+        try {
+          return (
+            <ApartmentsLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Apartments'}
+              categoryDescription={categoryData?.description || 'Compare apartment rental prices and amenities'}
+              categoryIcon={categoryData?.icon || 'building'}
+              iconGradient={iconGradient || ['#8B5CF6', '#7C3AED']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering ApartmentsLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="ApartmentsLayout" />;
+        }
+      }
+
+      // Special case: Food Delivery uses custom layout matching Figma design
+      if (slug === 'food-delivery') {
+        if (!FoodDeliveryLayout) {
+          const errorMsg = `FoodDeliveryLayout is undefined! Type: ${typeof FoodDeliveryLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="FoodDeliveryLayout" />;
+        }
+        
+        try {
+          return (
+            <FoodDeliveryLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Food Delivery'}
+              categoryDescription={categoryData?.description || 'Compare delivery prices on Uber Eats, DoorDash & more'}
+              categoryIcon={categoryData?.icon || 'utensils'}
+              iconGradient={iconGradient || ['#F97316', '#EC4899']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering FoodDeliveryLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="FoodDeliveryLayout" />;
+        }
+      }
+
+      // Special case: Massage uses custom layout matching Figma design
+      if (slug === 'massage') {
+        if (!MassageLayout) {
+          const errorMsg = `MassageLayout is undefined! Type: ${typeof MassageLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="MassageLayout" />;
+        }
+        
+        try {
+          return (
+            <MassageLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Massage Parlors'}
+              categoryDescription={categoryData?.description || 'Compare massage services and prices near you'}
+              categoryIcon={categoryData?.icon || 'heart'}
+              iconGradient={iconGradient || ['#EC4899', '#F97316']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering MassageLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="MassageLayout" />;
+        }
+      }
+
+      // Special case: Spa uses custom layout matching Figma design
+      if (slug === 'spa') {
+        if (!SpaLayout) {
+          const errorMsg = `SpaLayout is undefined! Type: ${typeof SpaLayout}`;
+          console.error('❌', errorMsg);
+          return <ErrorDisplay error={errorMsg} componentName="SpaLayout" />;
+        }
+        
+        try {
+          return (
+            <SpaLayout
+              categorySlug={slug || ''}
+              categoryName={categoryData?.name || 'Spa Services'}
+              categoryDescription={categoryData?.description || 'Compare spa services and treatment prices'}
+              categoryIcon={categoryData?.icon || 'sparkles'}
+              iconGradient={iconGradient || ['#EC4899', '#F97316']}
+            />
+          );
+        } catch (renderError) {
+          console.error('❌ Error rendering SpaLayout:', renderError);
+          return <ErrorDisplay error={renderError as Error} componentName="SpaLayout" />;
+        }
+      }
+
       // Pattern C: Service Listings
       // Pattern C doesn't need backend data initially, so don't wait for it
       if (!PatternCLayout) {
@@ -951,36 +1355,17 @@ function CategoryScreenContent() {
           { id: 'womens', name: "Women's Haircut", emoji: '👩' },
           { id: 'kids', name: "Kid's Haircut", emoji: '👶' },
         ];
-      } else if (slug === 'massage' || slug === 'spa') {
-        serviceTypes = [
-          { id: 'swedish', name: 'Swedish Massage', emoji: '💆' },
-          { id: 'deep', name: 'Deep Tissue', emoji: '💪' },
-          { id: 'hot', name: 'Hot Stone', emoji: '🔥' },
-        ];
       } else if (slug === 'nail-salons') {
         serviceTypes = [
           { id: 'manicure', name: 'Manicure', emoji: '💅' },
           { id: 'pedicure', name: 'Pedicure', emoji: '🦶' },
           { id: 'both', name: 'Manicure + Pedicure', emoji: '✨' },
         ];
-      } else if (slug === 'apartments') {
-        serviceTypes = [
-          { id: 'studio', name: 'Studio', emoji: '🏠' },
-          { id: '1br', name: '1 Bedroom', emoji: '🏡' },
-          { id: '2br', name: '2 Bedroom', emoji: '🏘️' },
-          { id: '3br', name: '3+ Bedroom', emoji: '🏛️' },
-        ];
       } else if (slug === 'moving') {
         serviceTypes = [
           { id: 'local', name: 'Local Move', emoji: '🚚' },
           { id: 'long', name: 'Long Distance', emoji: '🚛' },
           { id: 'packing', name: 'Packing Service', emoji: '📦' },
-        ];
-      } else if (slug === 'food-delivery') {
-        serviceTypes = [
-          { id: 'restaurant', name: 'Restaurant', emoji: '🍔' },
-          { id: 'grocery', name: 'Grocery', emoji: '🛒' },
-          { id: 'alcohol', name: 'Alcohol', emoji: '🍷' },
         ];
       } else if (slug === 'services') {
         serviceTypes = [

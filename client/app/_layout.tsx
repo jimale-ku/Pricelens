@@ -41,6 +41,14 @@ export default function RootLayout() {
           animationDuration: 0,
         }} 
       />
+      <Stack.Screen 
+        name="developer-dashboard" 
+        options={{ 
+          headerShown: false,
+          animation: 'none',
+          animationDuration: 0,
+        }} 
+      />
     </Stack>
   );
 }

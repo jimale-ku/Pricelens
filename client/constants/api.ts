@@ -17,7 +17,7 @@
 // For development on physical device or emulator
 // IMPORTANT: Backend runs on port 3000. Expo/Metro uses 8081 – do not use 8081 for API.
 // Override without code change: set EXPO_PUBLIC_API_URL in .env (e.g. EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000)
-const DEFAULT_API_BASE_URL = 'http://192.168.201.105:3000';
+const DEFAULT_API_BASE_URL = 'https://thievish-jae-hearingless.ngrok-free.dev ';
 export const API_BASE_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim()) || DEFAULT_API_BASE_URL;
 
