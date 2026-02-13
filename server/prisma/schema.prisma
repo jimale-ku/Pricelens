@@ -383,6 +383,7 @@ model SerperCache {
   type      String   // "maps" | "shopping" | "search"
   response  Json     // raw API response
   expiresAt DateTime
-  createdAt DateTime @default(now())  @@index([cacheKey])
+  createdAt DateTime @default(now())
+  @@index([cacheKey])
   @@index([expiresAt])
 }
