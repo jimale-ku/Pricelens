@@ -218,7 +218,9 @@ async function main() {
 
   console.log(`✅ Created ${stores.length} stores`);
 
-  // Add store locations
+  // Add store locations (only if none exist - idempotent for deploy)
+  const existingLocations = await prisma.storeLocation.count();
+  if (existingLocations === 0) {
   await prisma.storeLocation.createMany({
     data: [
       {
@@ -257,10 +259,16 @@ async function main() {
     ],
     skipDuplicates: true,
   });
-
   console.log('✅ Created store locations');
+  } else {
+    console.log(`⏭️ Skipping store locations (${existingLocations} already exist)`);
+  }
 
-  // Create sample products
+  // Create sample products only if DB has no products (idempotent for deploy)
+  const existingProductCount = await prisma.product.count();
+  if (existingProductCount > 0) {
+    console.log(`⏭️ Skipping sample products (${existingProductCount} already exist)`);
+  } else {
   const products = [
     // Groceries
     {
@@ -345,6 +353,7 @@ async function main() {
   }
 
   console.log(`✅ Created ${products.length} products with prices`);
+  }
 
   console.log('🎉 Database seeding completed!');
 }

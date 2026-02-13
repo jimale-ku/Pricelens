@@ -82,6 +82,16 @@ export class SubscriptionsService {
   }
 
   /**
+   * Get Stripe config for the app (e.g. whether test mode is enabled)
+   */
+  getStripeConfig(): { stripeTestMode: boolean } {
+    const key = process.env.STRIPE_SECRET_KEY || '';
+    return {
+      stripeTestMode: key.startsWith('sk_test_'),
+    };
+  }
+
+  /**
    * Create Stripe checkout session for subscription
    */
   async createCheckoutSession(userId: string, dto: CreateCheckoutDto) {

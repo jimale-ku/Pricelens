@@ -59,6 +59,29 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Normalize product image - convert images array to single image string
+   * Frontend expects 'image' string, but database has 'images' array
+   */
+  private normalizeProductImage(product: any) {
+    // If product has images array but no image string, use first image
+    if (!product.image && product.images && Array.isArray(product.images) && product.images.length > 0) {
+      product.image = product.images[0];
+    }
+    
+    // Ensure image is a valid string (not null/undefined)
+    if (!product.image || typeof product.image !== 'string') {
+      product.image = '';
+    }
+    
+    // Clean up: remove empty string images
+    if (product.image === '') {
+      product.image = null;
+    }
+    
+    return product;
+  }
+
   async create(createProductDto: CreateProductDto) {
     return this.prisma.product.create({
       data: createProductDto,
@@ -87,7 +110,10 @@ export class ProductsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return products.map((p) => this.enrichProductWithPriceCalculations(p));
+    return products.map((p) => {
+      const enriched = this.enrichProductWithPriceCalculations(p);
+      return this.normalizeProductImage(enriched);
+    });
   }
 
   async findOne(id: string) {
@@ -122,7 +148,8 @@ export class ProductsService {
       data: { viewCount: { increment: 1 } },
     });
 
-    return this.enrichProductWithPriceCalculations(product);
+    const enriched = this.enrichProductWithPriceCalculations(product);
+    return this.normalizeProductImage(enriched);
   }
 
   /**
@@ -220,7 +247,10 @@ export class ProductsService {
       });
     }
 
-    return products.map((p) => this.enrichProductWithPriceCalculations(p));
+    return products.map((p) => {
+      const enriched = this.enrichProductWithPriceCalculations(p);
+      return this.normalizeProductImage(enriched);
+    });
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
@@ -389,7 +419,10 @@ export class ProductsService {
     }
 
     return {
-      products: sortedProducts.map((p) => this.enrichProductWithPriceCalculations(p)),
+      products: sortedProducts.map((p) => {
+        const enriched = this.enrichProductWithPriceCalculations(p);
+        return this.normalizeProductImage(enriched);
+      }),
       count: sortedProducts.length,
       filters: {
         categorySlug,
@@ -1550,11 +1583,11 @@ export class ProductsService {
         }
       };
       
-      // PRIORITY: Use SerpAPI FIRST (gives products from MULTIPLE STORES)
-      // Fallback to PriceAPI only if SerpAPI doesn't have enough results
-      // Search MORE terms to ensure we get enough products after filtering
-      const maxTermsToSearch = Math.min(searchTerms.length, Math.max(needed * 3, 10)); // Search at least 10 terms or 3x needed
-      this.devLog(`🔍 Will search ${maxTermsToSearch} terms to find ${needed} products`);
+      // When DB is empty, cap terms so first load returns faster (e.g. groceries: 4 Serper calls ~10–15s vs 10 calls ~30s+)
+      const maxTermsToSearch = databaseIsEmpty
+        ? Math.min(4, searchTerms.length)
+        : Math.min(searchTerms.length, Math.max(needed * 3, 10));
+      this.devLog(`🔍 Will search ${maxTermsToSearch} terms to find ${needed} products${databaseIsEmpty ? ' (DB empty, capped for faster first load)' : ''}`);
       
       for (const term of searchTerms.slice(0, maxTermsToSearch)) {
         if (additionalProducts.length >= fetchTarget) break;
@@ -1650,7 +1683,10 @@ export class ProductsService {
     
     // CRITICAL: Update products with placeholder images to fetch real images from SerpAPI
     // First, enrich all products
-    const enrichedProducts = finalProducts.map((p) => this.enrichProductWithPriceCalculations(p));
+    const enrichedProducts = finalProducts.map((p) => {
+      const enriched = this.enrichProductWithPriceCalculations(p);
+      return this.normalizeProductImage(enriched);
+    });
     
     // Find products with placeholder images
     const productsNeedingImages = enrichedProducts.filter(p => {
@@ -2058,7 +2094,10 @@ export class ProductsService {
         // Combine existing products with new ones, but prioritize existing ones
         const combined = [...enrichedProducts, ...uniqueNewProducts]
           .slice(0, minLimit) // Ensure we don't return more than requested
-          .map((p) => this.enrichProductWithPriceCalculations(p));
+          .map((p) => {
+            const enriched = this.enrichProductWithPriceCalculations(p);
+            return this.normalizeProductImage(enriched);
+          });
         
         // If subcategory was specified, filter the combined results
         let finalProducts = combined;
@@ -2145,7 +2184,10 @@ export class ProductsService {
                 console.log(`✅ Got ${serpApiProducts.length} ${categoryName} from SerpAPI fallback`);
                 const finalSerpProducts = serpApiProducts
                   .slice(0, minLimit)
-                  .map((p) => this.enrichProductWithPriceCalculations(p));
+                  .map((p) => {
+                    const enriched = this.enrichProductWithPriceCalculations(p);
+                    return this.normalizeProductImage(enriched);
+                  });
                 
                 return {
                   products: finalSerpProducts,
@@ -2233,7 +2275,10 @@ export class ProductsService {
     }
 
     // Filter products to only include those with valid images AND real prices
-    let finalEnrichedProducts = filteredEnrichedProducts.map((p) => this.enrichProductWithPriceCalculations(p));
+    let finalEnrichedProducts = filteredEnrichedProducts.map((p) => {
+      const enriched = this.enrichProductWithPriceCalculations(p);
+      return this.normalizeProductImage(enriched);
+    });
     
     // Return first page immediately with whatever store count we have (3–20 from Serper grouping).
     // Do NOT block on fetching 20+ stores here – that caused very slow loading and timeouts.

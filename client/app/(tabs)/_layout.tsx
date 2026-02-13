@@ -159,6 +159,13 @@ export default function TabsLayout() {
           href: null, // Hidden from bottom nav - access via Profile > App Settings
         }}
       />
+      <Tabs.Screen
+        name="developer-dashboard"
+        options={{
+          href: null, // Hidden from bottom nav - access via Profile > Developer Dashboard
+          tabBarStyle: { display: 'none' }, // Hide tab bar when on this screen
+        }}
+      />
     </Tabs>
   );
 }

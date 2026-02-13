@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AppHeader from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { getIconName } from '@/utils/iconMapper';
+import { trackEvent } from '@/utils/analytics';
 
 interface PatternBLayoutProps {
   categorySlug: string;
@@ -190,6 +191,20 @@ export default function PatternBLayout({
 
       const data = await response.json();
       setResults(Array.isArray(data) ? data : []);
+      
+      // Track service search analytics
+      const zipCode = searchValues.zipCode || searchValues.location || '';
+      trackEvent({
+        eventType: 'service_search',
+        categorySlug,
+        categoryName,
+        serviceCategory: categorySlug,
+        searchQuery: categorySlug,
+        metadata: {
+          zipCode: zipCode.trim(),
+          ...searchValues,
+        },
+      });
     } catch (error: any) {
       console.error('❌ Search error:', error);
       Alert.alert(

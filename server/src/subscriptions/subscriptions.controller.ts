@@ -44,6 +44,12 @@ export class SubscriptionsController {
     return this.subscriptionsService.getPlans();
   }
 
+  @Get('config')
+  @ApiOperation({ summary: 'Get subscription/Stripe config (e.g. test mode)' })
+  async getConfig() {
+    return this.subscriptionsService.getStripeConfig();
+  }
+
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

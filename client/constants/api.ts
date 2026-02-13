@@ -92,6 +92,7 @@ export const API_ENDPOINTS = {
   subscriptions: {
     me: `${API_BASE_URL}/subscriptions/me`,
     plans: `${API_BASE_URL}/subscriptions/plans`,
+    config: `${API_BASE_URL}/subscriptions/config`,
     checkout: `${API_BASE_URL}/subscriptions/checkout`,
     cancel: `${API_BASE_URL}/subscriptions/cancel`,
   },

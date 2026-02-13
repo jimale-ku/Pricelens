@@ -387,3 +387,23 @@ model SerperCache {
   @@index([cacheKey])
   @@index([expiresAt])
 }
+
+// Analytics Events - Track user interactions and category performance
+model AnalyticsEvent {
+  id          String   @id @default(uuid())
+  eventType   String   // "category_view" | "category_search" | "product_search" | "service_search" | "product_view"
+  categorySlug String? // e.g. "groceries", "gas-stations"
+  categoryName String? // e.g. "Groceries", "Gas Stations"
+  productId   String?
+  productName String?
+  serviceCategory String? // e.g. "gas-stations", "gym"
+  userId      String? // null for anonymous users
+  searchQuery String? // search term used
+  metadata    Json?   // additional data (zipCode, filters, etc.)
+  createdAt   DateTime @default(now())
+  
+  @@index([eventType])
+  @@index([categorySlug])
+  @@index([createdAt])
+  @@index([userId])
+}

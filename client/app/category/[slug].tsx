@@ -34,6 +34,7 @@ import { SAMPLE_PRODUCTS } from '@/constants/groceryData';
 import { SAMPLE_ELECTRONICS_PRODUCTS } from '@/constants/electronicsData';
 import { generateSampleProducts } from '@/utils/generateSampleProducts';
 import { fetchCategoryStores, fetchCategoryProducts, fetchSubcategoryCounts } from '@/services/categoryService';
+import { trackEvent } from '@/utils/analytics';
 
 // CRITICAL: Validate all imports at module level with DETAILED error messages
 const validateComponent = (component: any, name: string) => {
@@ -245,6 +246,17 @@ function CategoryScreenContent() {
   // CRITICAL: Store AbortControllers to cancel pending requests when category changes
   const abortControllersRef = useRef<Set<AbortController>>(new Set());
   
+  // Track category view analytics
+  useEffect(() => {
+    if (!slug || !categoryData) return;
+    
+    trackEvent({
+      eventType: 'category_view',
+      categorySlug: slug,
+      categoryName: categoryData.name,
+    });
+  }, [slug, categoryData]);
+
   // Fetch stores and products from backend when category changes
   useEffect(() => {
     if (!slug || !categoryData) return;

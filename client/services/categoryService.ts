@@ -101,8 +101,8 @@ export async function fetchCategoryProducts(
   limit: number = 6
 ): Promise<any[]> {
   try {
-    // Use 15s timeout so backend has time to return placeholders when SerpAPI is rate-limited (avoids endless loading)
-    const timeoutDuration = 15000;
+    // 45s timeout: backend may need Render wake (30–60s) + Serper calls for categories like groceries (avoids empty screen)
+    const timeoutDuration = 45000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 

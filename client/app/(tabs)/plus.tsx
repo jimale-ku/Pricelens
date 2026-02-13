@@ -83,6 +83,7 @@ export default function PlusScreen() {
   const [onlineSearching, setOnlineSearching] = useState(false);
   const [onlineResults, setOnlineResults] = useState<typeof MOCK_COUPONS>([]);
   const [plusPlan, setPlusPlan] = useState<SubscriptionPlan | null>(null);
+  const [stripeTestMode, setStripeTestMode] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptResult, setReceiptResult] = useState<ReceiptAnalysisResult | null>(null);
@@ -117,10 +118,23 @@ export default function PlusScreen() {
     }
   }, []);
 
+  const fetchStripeConfig = useCallback(async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.subscriptions.config, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setStripeTestMode(!!data?.stripeTestMode);
+      }
+    } catch {
+      setStripeTestMode(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSubscription();
     fetchPlans();
-  }, [fetchSubscription, fetchPlans]);
+    fetchStripeConfig();
+  }, [fetchSubscription, fetchPlans, fetchStripeConfig]);
 
   const checkoutSessionIdRef = useRef<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -368,6 +382,25 @@ export default function PlusScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         <AppHeader />
+
+        {stripeTestMode && (
+          <View style={{
+            backgroundColor: 'rgba(245, 158, 11, 0.2)',
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(245, 158, 11, 0.5)',
+            paddingVertical: 10,
+            paddingHorizontal: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}>
+            <Ionicons name="flask" size={20} color="#F59E0B" />
+            <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 14 }}>
+              Stripe Test Mode — no real charges
+            </Text>
+          </View>
+        )}
 
         {!isPlusMember ? (
           /* ========== VIEW 1: Non-Subscriber (Upgrade Page) ========== */

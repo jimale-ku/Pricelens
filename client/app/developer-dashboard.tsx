@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { authenticatedFetch } from '@/utils/auth';
 import { API_ENDPOINTS } from '@/constants/api';
+import { fetchAnalytics, fetchCategoryPerformance } from '@/utils/analytics';
 
 interface AnalyticsData {
   totalUsers: number;
@@ -101,33 +102,57 @@ export default function DeveloperDashboardScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalyticsData = async () => {
     setRefreshing(true);
+    setLoading(true);
     try {
-      // TODO: Replace with actual API endpoint when backend is ready
-      // const response = await authenticatedFetch(`${API_ENDPOINTS.base}/analytics`);
-      // if (response.ok) {
-      //   const data = await response.json();
-      //   setAnalytics(data);
-      // }
+      const [summaryData, categoryData] = await Promise.all([
+        fetchAnalytics(),
+        fetchCategoryPerformance().catch(() => []), // Fallback to empty array if fails
+      ]);
       
-      // For now, use mock data with slight randomization
-      setTimeout(() => {
-        setAnalytics({
-          ...MOCK_ANALYTICS,
-          totalUsers: MOCK_ANALYTICS.totalUsers + Math.floor(Math.random() * 10),
-          newUsersToday: MOCK_ANALYTICS.newUsersToday + Math.floor(Math.random() * 5),
+      // Merge category performance into savingsByCategory
+      const savingsByCategory: Record<string, number> = {};
+      if (summaryData.savingsByCategory) {
+        Object.assign(savingsByCategory, summaryData.savingsByCategory);
+      }
+      
+      // Add category performance data
+      if (Array.isArray(categoryData)) {
+        categoryData.forEach((cat: any) => {
+          const slug = cat.name.toLowerCase().replace(/\s+/g, '-');
+          if (!savingsByCategory[slug]) {
+            // Estimate savings based on activity
+            const multiplier = cat.totalActivity * 10; // Rough estimate
+            savingsByCategory[slug] = multiplier;
+          }
         });
-        setRefreshing(false);
-      }, 1000);
+      }
+      
+      setAnalytics({
+        totalUsers: summaryData.totalUsers || 0,
+        plusUsers: summaryData.plusUsers || 0,
+        totalSavings: summaryData.totalSavings || 0,
+        avgSessionTime: summaryData.avgSessionTime || 420,
+        totalSessions: summaryData.totalSessions || 0,
+        newUsersToday: summaryData.newUsersToday || 0,
+        newUsersThisWeek: summaryData.newUsersThisWeek || 0,
+        newUsersThisMonth: summaryData.newUsersThisMonth || 0,
+        savingsByCategory,
+        recentSignups: summaryData.recentSignups || [],
+      });
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
+      // Fallback to mock data on error
+      setAnalytics(MOCK_ANALYTICS);
+    } finally {
       setRefreshing(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAnalytics();
+    fetchAnalyticsData();
   }, []);
 
   const totalSavings = analytics.totalSavings;
@@ -230,13 +255,20 @@ export default function DeveloperDashboardScreen() {
           Developer Dashboard
         </Text>
       </View>
+      {loading && !refreshing && (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#06B6D4" />
+          <Text style={{ color: '#94A3B8', marginTop: 16 }}>Loading analytics...</Text>
+        </View>
+      )}
+      {!loading && (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={fetchAnalytics}
+            onRefresh={fetchAnalyticsData}
             tintColor="#06B6D4"
           />
         }
@@ -266,7 +298,7 @@ export default function DeveloperDashboardScreen() {
               </Text>
             </View>
             <TouchableOpacity
-              onPress={fetchAnalytics}
+              onPress={fetchAnalyticsData}
               disabled={refreshing}
               activeOpacity={0.8}
             >
@@ -425,7 +457,14 @@ export default function DeveloperDashboardScreen() {
                 const displayCategory = category.replace(/([A-Z])/g, ' $1').trim();
                 
                 return (
-                  <View key={category}>
+                  <TouchableOpacity
+                    key={category}
+                    onPress={() => {
+                      // Navigate to category analytics detail or category page
+                      router.push(`/category/${category}`);
+                    }}
+                    activeOpacity={0.7}
+                  >
                     <View style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -472,7 +511,7 @@ export default function DeveloperDashboardScreen() {
                     }}>
                       {percentage}% of total
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -734,6 +773,7 @@ export default function DeveloperDashboardScreen() {
           </View>
         </View>
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

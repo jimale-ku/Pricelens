@@ -23,6 +23,7 @@ import { UserPreferencesModule } from './user-preferences/user-preferences.modul
 import { ServicesModule } from './services/services.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { ReceiptsModule } from './receipts/receipts.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 // import { JobsModule } from './jobs/jobs.module';
 // import { HealthModule } from './health/health.module';
 
@@ -69,6 +70,7 @@ import { ReceiptsModule } from './receipts/receipts.module';
     ServicesModule,
     SubscriptionsModule,
     ReceiptsModule,
+    AnalyticsModule,
     // JobsModule, // Disabled - requires Redis
     // HealthModule, // Disabled - requires JobsModule
   ],
