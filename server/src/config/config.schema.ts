@@ -11,9 +11,9 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string(),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
-  GOOGLE_CLIENT_ID: z.string(),
-  GOOGLE_CLIENT_SECRET: z.string(),
-  GOOGLE_CALLBACK_URL: z.string().url(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALLBACK_URL: z.string().url().optional(),
 
   AMAZON_ACCESS_KEY_ID: z.string().optional(),
   AMAZON_SECRET_ACCESS_KEY: z.string().optional(),
