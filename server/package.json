@@ -13,6 +13,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && NODE_OPTIONS='--max-old-space-size=1024' npm run build && node dist/src/main.js",
+    "start:render": "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
