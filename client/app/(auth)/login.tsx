@@ -140,6 +140,11 @@ export default function LoginScreen() {
       return;
     }
 
+    if (isSignUp && password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
     // Simple email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -161,9 +166,11 @@ export default function LoginScreen() {
             lastName: name.split(' ').slice(1).join(' ') || '' 
           }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert('Registration Failed', data?.message || 'Could not create account. Please try again.');
+          const msg = data?.error?.message ?? data?.message;
+          const text = Array.isArray(msg) ? msg.join('. ') : (msg || 'Could not create account. Check your connection and that the backend is running.');
+          Alert.alert('Registration Failed', text);
           return;
         }
         // Store tokens
@@ -181,9 +188,11 @@ export default function LoginScreen() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert('Login Failed', data?.message || 'Invalid email or password. Please try again.');
+          const msg = data?.error?.message ?? data?.message;
+          const text = Array.isArray(msg) ? msg.join('. ') : (msg || 'Invalid email or password. Please try again.');
+          Alert.alert('Login Failed', text);
           return;
         }
         // Store tokens
