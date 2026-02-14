@@ -18,6 +18,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import AppHeader from "@/components/AppHeader";
+import CurrentCategoryBar from "@/components/CurrentCategoryBar";
 import CategoryAdCard from "@/components/CategoryAdCard";
 import { priceDataCache } from '@/utils/priceDataCache';
 import BottomNav from "@/components/BottomNav";
@@ -1231,6 +1232,7 @@ export default function PatternALayout({
         />
       )}
       <AppHeader />
+      <CurrentCategoryBar categoryName={categoryName} />
       <ScrollView 
         ref={scrollViewRef}
         style={{ flex: 1 }} 

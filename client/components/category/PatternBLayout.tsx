@@ -11,12 +11,13 @@
  * - Savings calculator at bottom
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Pressable } from "react-native";
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Pressable, Linking, Image } from "react-native";
 import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from "@/components/AppHeader";
+import CurrentCategoryBar from "@/components/CurrentCategoryBar";
 import BottomNav from "@/components/BottomNav";
 import { getIconName } from '@/utils/iconMapper';
 import { trackEvent } from '@/utils/analytics';
@@ -329,6 +330,7 @@ export default function PatternBLayout({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
       <AppHeader />
+      <CurrentCategoryBar categoryName={categoryName} />
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
@@ -625,6 +627,109 @@ export default function PatternBLayout({
                     No results found. Try adjusting your search criteria.
                   </Text>
                 </View>
+              ) : categorySlug === 'rental-cars' && results[0]?.bookUrl ? (
+                /* Rental Cars: card layout with Book CTA for referral/affiliate */
+                <View>
+                  <Text style={{
+                    fontSize: 18,
+                    fontWeight: '600',
+                    color: '#E2E8F0',
+                    marginBottom: 8,
+                  }}>
+                    Compare rental companies
+                  </Text>
+                  <Text style={{
+                    fontSize: 14,
+                    color: '#94A3B8',
+                    marginBottom: 16,
+                  }}>
+                    Tap "Book" to go to the site and complete your reservation. We may earn a referral fee.
+                  </Text>
+                  {results.map((result: any, index: number) => (
+                    <TouchableOpacity
+                      key={result.companySlug || index}
+                      activeOpacity={0.85}
+                      onPress={() => result.bookUrl && Linking.openURL(result.bookUrl).catch(() => {})}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: index % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: 'rgba(148, 163, 184, 0.15)',
+                        padding: 16,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <View style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 10,
+                        backgroundColor: 'rgba(255,255,255,0.08)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}>
+                        {result.companyLogo ? (
+                          <Image
+                            source={{ uri: result.companyLogo }}
+                            style={{ width: 48, height: 48 }}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <Ionicons name="car-sport" size={28} color="#94A3B8" />
+                        )}
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 14 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <Text style={{ fontSize: 17, fontWeight: '600', color: '#F1F5F9' }} numberOfLines={1}>
+                            {result.company}
+                          </Text>
+                          {result.sponsored && (
+                            <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#FBBF24' }}>Sponsored</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 15, fontWeight: '600', color: '#60A5FA' }}>
+                            {result.pricePerDayFormatted || result.pricePerDay || result.price}
+                          </Text>
+                          {result.totalEstimateFormatted && (
+                            <Text style={{ fontSize: 13, color: '#94A3B8' }}>{result.totalEstimateFormatted}</Text>
+                          )}
+                          {result.rating != null && (
+                            <Text style={{ fontSize: 13, color: '#94A3B8' }}>★ {result.rating}</Text>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation(); result.bookUrl && Linking.openURL(result.bookUrl).catch(() => {}); }}
+                        activeOpacity={0.8}
+                        style={{
+                          backgroundColor: '#3B82F6',
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Book</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                  <View style={{
+                    marginTop: 8,
+                    padding: 14,
+                    backgroundColor: 'rgba(96, 165, 250, 0.08)',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(96, 165, 250, 0.2)',
+                  }}>
+                    <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center' }}>
+                      Prices are estimates. Final rate and availability on the provider’s site. Sponsored spots help us run the app.
+                    </Text>
+                  </View>
+                </View>
               ) : (
                 <View>
                   <Text style={{
@@ -714,7 +819,7 @@ export default function PatternBLayout({
                                 fontSize: 14,
                                 flex: 1,
                               }} numberOfLines={1}>
-                                {result[col.id] || '-'}
+                                {result[col.id] ?? result.pricePerDayFormatted ?? result.company ?? '-'}
                               </Text>
                             </View>
                           ))}
@@ -724,7 +829,7 @@ export default function PatternBLayout({
                   </ScrollView>
                   
                   {/* Savings Calculator (if applicable) */}
-                  {results.length > 1 && results[0]?.price && results[results.length - 1]?.price && (
+                  {results.length > 1 && (results[0]?.price || results[0]?.pricePerDay) && (results[results.length - 1]?.price || results[results.length - 1]?.pricePerDay) && (
                     <View style={{
                       marginTop: 16,
                       padding: 16,
@@ -739,7 +844,7 @@ export default function PatternBLayout({
                         fontWeight: '600',
                         textAlign: 'center',
                       }}>
-                        💰 Save up to ${(parseFloat(results[results.length - 1].price.replace('$', '')) - parseFloat(results[0].price.replace('$', ''))).toFixed(2)} by choosing the best option!
+                        💰 Compare options above to find the best deal for you.
                       </Text>
                     </View>
                   )}

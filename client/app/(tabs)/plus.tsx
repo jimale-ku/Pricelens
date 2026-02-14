@@ -204,10 +204,6 @@ export default function PlusScreen() {
       Alert.alert('Not available', 'Subscription plans could not be loaded. Please try again later.');
       return;
     }
-    if (!plusPlan.stripePriceId) {
-      Alert.alert('Setup required', 'Stripe is not configured for this plan yet. Add STRIPE_PRICE_ID_BASIC_MONTHLY to the server.');
-      return;
-    }
     setCheckoutLoading(true);
     try {
       const res = await fetch(API_ENDPOINTS.subscriptions.checkout, {

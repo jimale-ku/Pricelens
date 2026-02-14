@@ -178,19 +178,28 @@ export class ServicesController {
 
   /**
    * Pattern B: Search rental cars
-   * GET /services/rental-cars?location=Los+Angeles&pickupDate=2024-03-15&returnDate=2024-03-20
+   * GET /services/rental-cars?location=LAX&dates=Dec+1-5+2025&carType=suv
+   * or ?location=LAX&pickupDate=2024-03-15&returnDate=2024-03-20&carType=economy
    */
   @Get('rental-cars')
   async searchRentalCars(
     @Query('location') location: string,
     @Query('pickupDate') pickupDate?: string,
     @Query('returnDate') returnDate?: string,
+    @Query('dates') dates?: string,
+    @Query('carType') carType?: string,
   ) {
-    if (!location) {
+    if (!location?.trim()) {
       throw new Error('Location is required');
     }
 
-    return this.servicesService.searchRentalCars({ location, pickupDate, returnDate });
+    return this.servicesService.searchRentalCars({
+      location: location.trim(),
+      pickupDate: pickupDate?.trim(),
+      returnDate: returnDate?.trim(),
+      dates: dates?.trim(),
+      carType: carType?.trim(),
+    });
   }
 
   /**
@@ -360,7 +369,13 @@ export class ServicesController {
         return this.searchCarWashes(zipCode || '', queryParams.washType);
       
       case 'rental-cars':
-        return this.searchRentalCars(location || zipCode || '', queryParams.pickupDate, queryParams.returnDate);
+        return this.searchRentalCars(
+          location || zipCode || '',
+          queryParams.pickupDate,
+          queryParams.returnDate,
+          queryParams.dates,
+          queryParams.carType,
+        );
       
       case 'storage':
         return this.searchStorageUnits(zipCode || '', queryParams.size);

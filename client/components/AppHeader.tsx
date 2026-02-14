@@ -86,6 +86,18 @@ export default function AppHeader() {
     }
   }, [pathname]);
 
+  // When we land on a category page (e.g. from link or back), scroll pill bar so the active pill is visible
+  useEffect(() => {
+    const slug = activeTab;
+    if (slug && slug !== 'my-list' && slug !== 'plus' && slug !== 'profile' && slug !== 'analytics' && tabPositions[slug] != null && scrollViewRef.current) {
+      const x = Math.max(0, tabPositions[slug] - SCREEN_WIDTH / 2 + 60);
+      const t = setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ x, y: 0, animated: true });
+      }, 200);
+      return () => clearTimeout(t);
+    }
+  }, [activeTab, tabPositions]);
+
   const handleCategoryPress = (slug: string, index: number) => {
     // CRITICAL: Cancel any pending navigation to prevent race conditions
     if (pendingNavigationRef.current) {

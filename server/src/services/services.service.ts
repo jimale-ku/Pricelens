@@ -64,6 +64,9 @@ export interface SearchRentalCarsDto {
   location: string;
   pickupDate?: string;
   returnDate?: string;
+  /** Single string e.g. "Dec 1-5, 2025" when frontend sends "dates" */
+  dates?: string;
+  carType?: string;
 }
 
 export interface SearchStorageUnitsDto {
@@ -635,37 +638,68 @@ export class ServicesService {
   }
 
   /**
-   * Pattern B: Search rental cars
+   * Pattern B: Search rental cars.
+   * - When SERPER_API_KEY (or SERPAPI_KEY) is set: uses real Serper Maps data (real places, real links).
+   *   Maps does not return daily rates, so price shows "Check price on site"; logos/sponsored come from partner match.
+   * - When mock mode (USE_MOCK_SERVICE_DATA=true or no API key in dev): returns curated partner list with estimated prices.
    */
   async searchRentalCars(dto: SearchRentalCarsDto) {
-    // Use mock data if enabled
+    const pickup = dto.pickupDate || (dto.dates ? dto.dates.split(/\s*[-–]\s*/)[0]?.trim() : undefined);
+    const return_ = dto.returnDate || (dto.dates ? dto.dates.split(/\s*[-–]\s*/)[1]?.trim() : undefined);
+
     if (this.useMockData) {
-      this.logger.log(`📦 Using mock data for rental cars (Location: ${dto.location})`);
-      return this.mockServiceData.generateRentalCars(dto.location, dto.pickupDate, dto.returnDate);
+      this.logger.log(`📦 Mock mode: rental cars partner list (Location: ${dto.location}). Set SERPER_API_KEY and USE_MOCK_SERVICE_DATA=false for real Serper data.`);
+      return this.mockServiceData.generateRentalCars(dto.location, pickup, return_, dto.carType);
     }
 
     try {
       const query = `car rental ${dto.location}`;
-      const results = await this.serpAPIMapsService.searchMaps({
+      const mapsResponse = await this.serpAPIMapsService.searchMaps({
         query,
         location: dto.location,
       });
 
-      return results.results.map((result, index) => ({
-        rank: index + 1,
-        company: result.title,
-        address: result.address,
-        price: result.price || this.estimateRentalCarPrice(result) || 'Contact for pricing',
-        distance: result.distance || 'N/A',
-        rating: result.rating,
-        reviews: result.reviews,
-        phone: result.phone,
-        website: result.website,
-      }));
+      if (!mapsResponse?.results?.length) {
+        this.logger.warn('Serper Maps returned no rental car results; falling back to partner list.');
+        return this.mockServiceData.generateRentalCars(dto.location, pickup, return_, dto.carType);
+      }
+
+      const encodedLocation = encodeURIComponent(dto.location);
+      return mapsResponse.results.map((place, index) => {
+        const partner = this.mockServiceData.getRentalCarPartnerByTitle(place.title);
+        const bookUrl = place.website || (partner?.bookUrl || '');
+        const bookUrlWithParams = bookUrl
+          ? `${bookUrl}${bookUrl.includes('?') ? '&' : '?'}pickupLocation=${encodedLocation}${pickup ? `&pickupDate=${encodeURIComponent(pickup)}` : ''}${return_ ? `&returnDate=${encodeURIComponent(return_)}` : ''}`
+          : (partner ? `${partner.bookUrl}?pickupLocation=${encodedLocation}` : '');
+
+        let logoUrl = partner?.logoUrl;
+        if (!logoUrl && place.website) {
+          try {
+            const host = new URL(place.website).hostname.replace(/^www\./, '');
+            if (host) logoUrl = `https://logo.clearbit.com/${host}`;
+          } catch {
+            // ignore invalid URL
+          }
+        }
+
+        return {
+          rank: index + 1,
+          company: place.title,
+          companySlug: partner?.slug || place.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+          companyLogo: logoUrl,
+          pricePerDayFormatted: 'Check price on site',
+          totalEstimateFormatted: null,
+          rating: place.rating,
+          reviews: place.reviews,
+          address: place.address,
+          bookUrl: bookUrlWithParams || undefined,
+          sponsored: partner?.sponsored ?? false,
+          phone: place.phone,
+        };
+      });
     } catch (error: any) {
       this.logger.error(`Error searching rental cars: ${error.message}`);
-      this.logger.warn('⚠️ Falling back to mock data due to API error');
-      return this.mockServiceData.generateRentalCars(dto.location, dto.pickupDate, dto.returnDate);
+      return this.mockServiceData.generateRentalCars(dto.location, pickup, return_, dto.carType);
     }
   }
 

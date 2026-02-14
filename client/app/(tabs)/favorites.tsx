@@ -4,9 +4,8 @@
  */
 
 import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, Image, RefreshControl, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AppHeader from '@/components/AppHeader';
 import { getAllFavorites, removeFavorite, FavoriteProduct } from '@/utils/favoritesService';
@@ -80,6 +79,13 @@ export default function FavoritesScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
       <AppHeader />
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 6 }}
+      >
+        <Ionicons name="chevron-back" size={24} color="#94A3B8" />
+        <Text style={{ color: '#94A3B8', fontSize: 16 }}>Back</Text>
+      </TouchableOpacity>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -159,13 +165,13 @@ export default function FavoritesScreen() {
                               {favorite.productName}
                             </Text>
                             <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8 }}>
-                              {favorite.category}
+                              {favorite.category ?? ''}
                             </Text>
-                            {favorite.minPrice && (
+                            {(favorite.minPrice != null && favorite.minPrice > 0) ? (
                               <Text style={{ fontSize: 16, fontWeight: '700', color: '#10b981' }}>
-                                From ${favorite.minPrice.toFixed(2)}
+                                From ${Number(favorite.minPrice).toFixed(2)}
                               </Text>
-                            )}
+                            ) : null}
                           </View>
                           <TouchableOpacity
                             onPress={() => handleRemoveFavorite(favorite.productId)}
@@ -213,14 +219,14 @@ export default function FavoritesScreen() {
                               />
                               <View style={{ flex: 1 }}>
                                 <Text style={{ color: '#E2E8F0', fontSize: 14, fontWeight: '500' }}>
-                                  {variation.storeName}
+                                  {variation.storeName != null ? String(variation.storeName) : 'Store'}
                                 </Text>
                                 <Text style={{ color: '#94A3B8', fontSize: 12 }}>
-                                  {variation.shippingInfo || 'Available'}
+                                  {variation.shippingInfo != null ? String(variation.shippingInfo) : 'Available'}
                                 </Text>
                               </View>
                               <Text style={{ color: '#10b981', fontSize: 16, fontWeight: '700' }}>
-                                {variation.price}
+                                {variation.price != null ? String(variation.price) : '—'}
                               </Text>
                             </TouchableOpacity>
                           ))}

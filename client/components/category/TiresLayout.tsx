@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from "@/components/AppHeader";
+import CurrentCategoryBar from "@/components/CurrentCategoryBar";
 import BottomNav from "@/components/BottomNav";
 
 interface TiresLayoutProps {
@@ -114,6 +115,7 @@ export default function TiresLayout({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
       <AppHeader />
+      <CurrentCategoryBar categoryName={categoryName} />
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}

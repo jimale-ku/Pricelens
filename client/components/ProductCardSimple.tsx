@@ -99,9 +99,8 @@ export default function ProductCardSimple({
       const result = await toggleFavorite(favoriteProduct);
       setIsFavorite(result.isFavorite);
       
-      if (result.success) {
-        // Optional: Show toast notification
-        // Alert.alert('', result.message);
+      if (result.success && result.isFavorite) {
+        Alert.alert('Added to Favorites', 'You have added this item to the favorite page.');
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);

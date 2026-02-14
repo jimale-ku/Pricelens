@@ -117,11 +117,14 @@ export class SubscriptionsService {
       ? planWithYearly.stripePriceIdYearly
       : plan.stripePriceId;
 
-    if (!priceId) {
+    // For testing: if no Stripe Price ID is set, use inline price_data from plan price (cents)
+    const useInlinePrice = !priceId && plan.price != null && plan.price > 0;
+    const amountCents = Math.round((plan.price || 0) * 100);
+    if (!priceId && !useInlinePrice) {
       throw new BadRequestException(
         useYearly
           ? 'Plan does not have a yearly Stripe price. Use monthly or add STRIPE_PRICE_ID_*_YEARLY.'
-          : 'Plan does not have a Stripe price ID',
+          : 'Plan does not have a Stripe price ID and has no price amount.',
       );
     }
 
@@ -160,16 +163,28 @@ export class SubscriptionsService {
     const planWithTrial = plan as typeof plan & { trialPeriodDays?: number | null };
     const trialDays = planWithTrial.trialPeriodDays ?? 0;
 
+    const lineItem = useInlinePrice
+      ? {
+          price_data: {
+            currency: 'usd',
+            unit_amount: amountCents,
+            product_data: {
+              name: plan.name,
+              description: `PriceLens ${plan.name} subscription`,
+            },
+            recurring: {
+              interval: useYearly ? 'year' : 'month',
+            },
+          },
+          quantity: 1,
+        }
+      : { price: priceId, quantity: 1 };
+
     const sessionParams: any = {
       customer: stripeCustomer.stripeCustomerId,
       payment_method_types: ['card'],
       mode: 'subscription',
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [lineItem],
       success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription/cancel`,
       metadata: {
@@ -179,9 +194,10 @@ export class SubscriptionsService {
       },
     };
 
-    if (trialDays > 0) {
-      sessionParams.subscription_data = { trial_period_days: trialDays };
-    }
+    sessionParams.subscription_data = {
+      ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
+      metadata: { planId: plan.id },
+    };
 
     const session = await this.stripe.checkout.sessions.create(sessionParams);
 
@@ -266,14 +282,20 @@ export class SubscriptionsService {
       return;
     }
 
-    // Find plan by Stripe price ID
     const priceId = stripeSubscription.items.data[0]?.price.id;
-    const plan = await this.prisma.subscriptionPlan.findUnique({
-      where: { stripePriceId: priceId },
-    });
-
+    const metadataPlanId = stripeSubscription.metadata?.planId;
+    let plan = priceId
+      ? await this.prisma.subscriptionPlan.findUnique({
+          where: { stripePriceId: priceId },
+        })
+      : null;
+    if (!plan && metadataPlanId) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { id: metadataPlanId },
+      });
+    }
     if (!plan) {
-      console.error('Plan not found for Stripe price ID:', priceId);
+      this.logger.warn(`Plan not found for price ${priceId} or metadata.planId ${metadataPlanId}`);
       return;
     }
 

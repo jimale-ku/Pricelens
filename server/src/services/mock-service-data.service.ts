@@ -316,31 +316,72 @@ export class MockServiceDataService {
   }
 
   /**
-   * Generate mock rental cars data
+   * Curated rental car partners: real brands with book URLs for affiliate/referral.
+   * Add your affiliate params to bookUrl when you have partner agreements.
    */
-  generateRentalCars(location: string, pickupDate?: string, returnDate?: string): any[] {
-    const companies = [
-      { name: 'Enterprise Rent-A-Car', price: '$45/day', rating: 4.3 },
-      { name: 'Hertz', price: '$50/day', rating: 4.2 },
-      { name: 'Avis', price: '$48/day', rating: 4.1 },
-      { name: 'Budget', price: '$40/day', rating: 4.0 },
-      { name: 'National Car Rental', price: '$52/day', rating: 4.4 },
-      { name: 'Alamo', price: '$46/day', rating: 4.2 },
-      { name: 'Thrifty', price: '$38/day', rating: 3.9 },
-      { name: 'Dollar', price: '$35/day', rating: 3.8 },
-    ];
+  private readonly RENTAL_CAR_PARTNERS = [
+    { name: 'Hertz', slug: 'hertz', basePricePerDay: 52, rating: 4.2, logoUrl: 'https://logo.clearbit.com/hertz.com', bookUrl: 'https://www.hertz.com/rentacar/reservation/', sponsored: true },
+    { name: 'Enterprise Rent-A-Car', slug: 'enterprise', basePricePerDay: 45, rating: 4.3, logoUrl: 'https://logo.clearbit.com/enterprise.com', bookUrl: 'https://www.enterprise.com/en/car-rental/locations.html', sponsored: false },
+    { name: 'Avis', slug: 'avis', basePricePerDay: 48, rating: 4.1, logoUrl: 'https://logo.clearbit.com/avis.com', bookUrl: 'https://www.avis.com/en/home', sponsored: true },
+    { name: 'Budget', slug: 'budget', basePricePerDay: 40, rating: 4.0, logoUrl: 'https://logo.clearbit.com/budget.com', bookUrl: 'https://www.budget.com/en/home', sponsored: false },
+    { name: 'National Car Rental', slug: 'national', basePricePerDay: 54, rating: 4.4, logoUrl: 'https://logo.clearbit.com/nationalcar.com', bookUrl: 'https://www.nationalcar.com/en/home.html', sponsored: false },
+    { name: 'Alamo', slug: 'alamo', basePricePerDay: 46, rating: 4.2, logoUrl: 'https://logo.clearbit.com/alamo.com', bookUrl: 'https://www.alamo.com/en/home.html', sponsored: false },
+    { name: 'Thrifty', slug: 'thrifty', basePricePerDay: 38, rating: 3.9, logoUrl: 'https://logo.clearbit.com/thrifty.com', bookUrl: 'https://www.thrifty.com/', sponsored: false },
+    { name: 'Dollar', slug: 'dollar', basePricePerDay: 35, rating: 3.8, logoUrl: 'https://logo.clearbit.com/dollar.com', bookUrl: 'https://www.dollar.com/', sponsored: false },
+    { name: 'Sixt', slug: 'sixt', basePricePerDay: 55, rating: 4.3, logoUrl: 'https://logo.clearbit.com/sixt.com', bookUrl: 'https://www.sixt.com/car-rental/', sponsored: false },
+    { name: 'Kayak', slug: 'kayak', basePricePerDay: 42, rating: 4.5, logoUrl: 'https://logo.clearbit.com/kayak.com', bookUrl: 'https://www.kayak.com/cars/', sponsored: true },
+  ];
 
-    return companies.map((company, index) => ({
-      rank: index + 1,
-      company: company.name,
-      address: `${800 + index * 100} Rental Ave, ${location}`,
-      price: company.price,
-      distance: `${(index * 0.5 + 0.3).toFixed(1)} miles`,
-      rating: company.rating,
-      reviews: Math.floor(Math.random() * 1000 + 100),
-      phone: `(555) ${800 + index}-${8000 + index}`,
-      website: `https://${company.name.toLowerCase().replace(/\s+/g, '')}.com`,
-    }));
+  /**
+   * Match a place title from Serper Maps to a known partner (for logo, bookUrl, sponsored).
+   * Used when enriching real Serper results so we still show logos and affiliate links.
+   */
+  getRentalCarPartnerByTitle(title: string): { name: string; slug: string; logoUrl: string; bookUrl: string; sponsored: boolean } | null {
+    if (!title || typeof title !== 'string') return null;
+    const lower = title.toLowerCase();
+    for (const p of this.RENTAL_CAR_PARTNERS) {
+      if (lower.includes(p.slug) || lower.includes(p.name.toLowerCase().replace(/-/g, ' '))) return p;
+    }
+    return null;
+  }
+
+  /**
+   * Generate rental car results (used when mock data is ON or when Serper returns no results).
+   * Prices vary by car type; bookUrl can include location/dates for deep linking.
+   */
+  generateRentalCars(location: string, pickupDate?: string, returnDate?: string, carType?: string): any[] {
+    const carTypeMultipliers: Record<string, number> = {
+      economy: 0.85,
+      compact: 0.95,
+      suv: 1.25,
+      luxury: 1.65,
+    };
+    const mult = carType ? (carTypeMultipliers[carType] ?? 1) : 1;
+
+    return this.RENTAL_CAR_PARTNERS.map((partner, index) => {
+      const variation = (Math.random() - 0.5) * 12;
+      const pricePerDay = Math.round((partner.basePricePerDay * mult + variation) * 100) / 100;
+      const days = 5; // default trip length for total estimate
+      const totalEstimate = Math.round(pricePerDay * days * 100) / 100;
+      const encodedLocation = encodeURIComponent(location);
+      const bookUrlWithParams = `${partner.bookUrl}${partner.bookUrl.includes('?') ? '&' : '?'}pickupLocation=${encodedLocation}${pickupDate ? `&pickupDate=${encodeURIComponent(pickupDate)}` : ''}${returnDate ? `&returnDate=${encodeURIComponent(returnDate)}` : ''}`;
+
+      return {
+        rank: index + 1,
+        company: partner.name,
+        companySlug: partner.slug,
+        companyLogo: partner.logoUrl,
+        pricePerDay: pricePerDay,
+        pricePerDayFormatted: `$${pricePerDay.toFixed(2)}/day`,
+        totalEstimate: totalEstimate,
+        totalEstimateFormatted: `$${totalEstimate.toFixed(2)} total`,
+        rating: partner.rating,
+        reviews: Math.floor(Math.random() * 800 + 200),
+        bookUrl: bookUrlWithParams,
+        sponsored: partner.sponsored ?? false,
+        carType: carType || 'economy',
+      };
+    });
   }
 
   /**

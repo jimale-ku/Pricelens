@@ -1,10 +1,6 @@
 /**
- * My Lists - Simplified design
- * Quick access: Favorites card
- * Tabs: Current | Saved | History
- * Current tab shows the shopping list with items
- * Compare button only when list has items
- * Users add items via the + button on product cards
+ * My Lists - Favorites, Last Bought, search to add items, one Compare button
+ * Search input at top; when list empty Compare is centered; when has items Compare below list
  */
 
 import {
@@ -15,7 +11,7 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-  RefreshControl,
+  TextInput,
   AppState,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,12 +21,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import AppHeader from '@/components/AppHeader';
 import {
   getAllLists,
-  calculateListTotal,
   ShoppingList,
 } from '@/utils/listService';
 import { getAllFavorites } from '@/utils/favoritesService';
-
-type TabType = 'current' | 'saved' | 'history';
 
 const cardStyle = {
   flex: 1,
@@ -44,11 +37,10 @@ const cardStyle = {
 
 export default function ListsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('current');
   const [groceryList, setGroceryList] = useState<ShoppingList | null>(null);
   const [savedLists, setSavedLists] = useState<ShoppingList[]>([]);
   const [favoritesCount, setFavoritesCount] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastItemCountRef = useRef<number>(0);
 
@@ -134,12 +126,15 @@ export default function ListsScreen() {
     if (groceryList) lastItemCountRef.current = groceryList.items.length;
   }, [groceryList]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadGroceryList();
-    loadFavoritesCount();
-    setTimeout(() => setRefreshing(false), 500);
-  }, [loadGroceryList, loadFavoritesCount]);
+  const handleSearchSubmit = () => {
+    const q = searchQuery.trim();
+    if (q) {
+      router.push(`/(tabs)/search?q=${encodeURIComponent(q)}`);
+      setSearchQuery('');
+    } else {
+      router.push('/(tabs)/search');
+    }
+  };
 
   const handleAddItem = () => {
     router.push('/(tabs)/search');
@@ -162,169 +157,108 @@ export default function ListsScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#3B82F6"
-            colors={['#3B82F6']}
-          />
-        }
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}>
-          {/* Title */}
-          <Text
-            style={{
-              fontSize: 24,
-              fontWeight: '700',
-              color: '#FFFFFF',
-              marginBottom: 16,
-            }}
-          >
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#FFFFFF', marginBottom: 16 }}>
             My Lists
           </Text>
 
-          {/* Quick Access Card: Favorites */}
-          <View
+          {/* Favorites card */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push('/(tabs)/favorites')}
             style={{
-              marginBottom: 24,
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: 'rgba(148, 163, 184, 0.1)',
+              padding: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 12,
             }}
           >
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => router.push('/(tabs)/favorites')}
+            <Ionicons name="heart-outline" size={24} color="#EC4899" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>
+                Favorites
+              </Text>
+              <Text style={{ fontSize: 13, color: '#94A3B8' }}>
+                {favoritesCount} item{favoritesCount !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Last Bought card */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push('/(tabs)/purchase-history')}
+            style={{
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: 'rgba(148, 163, 184, 0.1)',
+              padding: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 20,
+            }}
+          >
+            <Ionicons name="receipt-outline" size={24} color="#10b981" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>
+                Last Bought
+              </Text>
+              <Text style={{ fontSize: 13, color: '#94A3B8' }}>
+                Purchase history
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Search input - at top below My List / cards */}
+          <View style={{ marginBottom: 16 }}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
+              placeholder="Search to add items to your list..."
+              placeholderTextColor="#64748B"
               style={{
                 backgroundColor: 'rgba(15, 23, 42, 0.6)',
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: 'rgba(148, 163, 184, 0.1)',
-                padding: 16,
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                fontSize: 16,
+                color: '#FFFFFF',
+              }}
+            />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleSearchSubmit}
+              style={{
+                marginTop: 8,
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 12,
+                justifyContent: 'center',
+                gap: 8,
               }}
             >
-              <Ionicons name="heart-outline" size={24} color="#EC4899" />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: '600',
-                    color: '#FFFFFF',
-                    marginBottom: 4,
-                  }}
-                >
-                  Favorites
-                </Text>
-                <Text style={{ fontSize: 13, color: '#94A3B8' }}>
-                  {favoritesCount} favorited item{favoritesCount !== 1 ? 's' : ''}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+              <Ionicons name="search" size={18} color="#3B82F6" />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#3B82F6' }}>
+                Search & add to list
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Tabs: Current | Saved | History */}
+          {/* List content */}
           <View
-            style={{
-              flexDirection: 'row',
-              gap: 24,
-              marginBottom: 16,
-              borderBottomWidth: 1,
-              borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-              paddingBottom: 8,
-            }}
-          >
-            {(
-              [
-                { id: 'current' as TabType, label: 'Current' },
-                { id: 'saved' as TabType, label: 'Saved' },
-                { id: 'history' as TabType, label: 'History' },
-              ] as const
-            ).map((tab) => (
-              <TouchableOpacity
-                key={tab.id}
-                activeOpacity={0.8}
-                onPress={() => setActiveTab(tab.id)}
-                style={{
-                  paddingBottom: 8,
-                  borderBottomWidth: activeTab === tab.id ? 2 : 0,
-                  borderBottomColor: '#3B82F6',
-                }}
-              >
-                <Text
-                  style={{
-                    color: activeTab === tab.id ? '#3B82F6' : '#94A3B8',
-                    fontSize: 14,
-                    fontWeight: activeTab === tab.id ? '600' : '400',
-                  }}
-                >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Tab: Current */}
-          {activeTab === 'current' && (
-            <View>
-              {/* + Add Items button */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleAddItem}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  paddingVertical: 14,
-                  marginBottom: 16,
-                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(59, 130, 246, 0.3)',
-                  borderStyle: 'dashed',
-                }}
-              >
-                <Ionicons name="add-circle-outline" size={22} color="#3B82F6" />
-                <Text style={{ fontSize: 16, fontWeight: '600', color: '#3B82F6' }}>
-                  Search & Add Items
-                </Text>
-              </TouchableOpacity>
-
-              {/* Compare button - only when list has items */}
-              {itemCount > 0 && (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={handleComparePrices}
-                  style={{ width: '100%', marginBottom: 16 }}
-                >
-                  <LinearGradient
-                    colors={['#3B82F6', '#8B5CF6']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{
-                      borderRadius: 12,
-                      paddingVertical: 16,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: '#FFFFFF',
-                        fontSize: 16,
-                        fontWeight: '600',
-                      }}
-                    >
-                      Compare Prices Across Stores
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-
-              {/* Current list content */}
-              <View
                 style={{
                   backgroundColor: 'rgba(15, 23, 42, 0.6)',
                   borderRadius: 16,
@@ -333,120 +267,61 @@ export default function ListsScreen() {
                   borderColor: 'rgba(148, 163, 184, 0.1)',
                 }}
               >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: 16,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Ionicons name="cart" size={22} color="#3B82F6" />
-                    <Text
-                      style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF' }}
-                    >
-                      {groceryList?.name || 'My Shopping List'}
-                    </Text>
-                    {itemCount > 0 && (
-                      <View
-                        style={{
-                          backgroundColor: '#10b981',
-                          borderRadius: 10,
-                          minWidth: 22,
-                          height: 22,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          paddingHorizontal: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: '#FFFFFF',
-                            fontSize: 12,
-                            fontWeight: '700',
-                          }}
-                        >
-                          {itemCount}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={onRefresh}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <Ionicons name="cart" size={22} color="#3B82F6" />
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF' }}>
+                    {groceryList?.name || 'My Shopping List'}
+                  </Text>
+                  {itemCount > 0 && (
+                    <View
                       style={{
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderRadius: 8,
-                        padding: 8,
-                        borderWidth: 1,
-                        borderColor: 'rgba(59, 130, 246, 0.3)',
-                      }}
-                    >
-                      <Ionicons name="refresh" size={18} color="#3B82F6" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={handleAddItem}
-                      style={{
-                        backgroundColor: '#3B82F6',
-                        borderRadius: 8,
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        flexDirection: 'row',
+                        backgroundColor: '#10b981',
+                        borderRadius: 10,
+                        minWidth: 22,
+                        height: 22,
                         alignItems: 'center',
-                        gap: 6,
+                        justifyContent: 'center',
+                        paddingHorizontal: 6,
                       }}
                     >
-                      <Ionicons name="add" size={18} color="#FFFFFF" />
-                      <Text
-                        style={{
-                          color: '#FFFFFF',
-                          fontSize: 14,
-                          fontWeight: '600',
-                        }}
-                      >
-                        Add
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                        {itemCount}
                       </Text>
-                    </TouchableOpacity>
-                  </View>
+                    </View>
+                  )}
                 </View>
 
                 {!groceryList || groceryList.items.length === 0 ? (
-                  <View
-                    style={{
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingVertical: 40,
-                    }}
-                  >
-                    <Ionicons
-                      name="cart-outline"
-                      size={64}
-                      color="rgba(100, 116, 139, 0.4)"
-                    />
-                    <Text
-                      style={{
-                        color: '#E2E8F0',
-                        fontSize: 16,
-                        fontWeight: '600',
-                        marginTop: 16,
-                        marginBottom: 8,
-                      }}
-                    >
+                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 32 }}>
+                    <Ionicons name="cart-outline" size={56} color="rgba(100, 116, 139, 0.4)" />
+                    <Text style={{ color: '#E2E8F0', fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 }}>
                       Your list is empty
                     </Text>
-                    <Text
-                      style={{
-                        color: '#94A3B8',
-                        fontSize: 14,
-                        textAlign: 'center',
-                        maxWidth: 280,
-                      }}
-                    >
-                      Search for products and tap the + button to add them to your list
+                    <Text style={{ color: '#94A3B8', fontSize: 14, textAlign: 'center', maxWidth: 280, marginBottom: 24 }}>
+                      Use the search above to find items and add them to your list
                     </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={handleComparePrices}
+                      style={{ alignSelf: 'center' }}
+                    >
+                      <LinearGradient
+                        colors={['#3B82F6', '#8B5CF6']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{
+                          borderRadius: 10,
+                          paddingVertical: 12,
+                          paddingHorizontal: 20,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600' }}>
+                          Compare Prices
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={{ gap: 10 }}>
@@ -512,199 +387,32 @@ export default function ListsScreen() {
                     ))}
                   </View>
                 )}
-              </View>
-            </View>
-          )}
 
-          {/* Tab: Saved */}
-          {activeTab === 'saved' && (
-            <View>
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: '700',
-                  color: '#FFFFFF',
-                  marginBottom: 16,
-                }}
-              >
-                Saved Lists
-              </Text>
-              {savedLists.length === 0 ? (
-                <View
-                  style={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    borderRadius: 16,
-                    padding: 40,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Ionicons name="list-outline" size={64} color="#64748B" />
-                  <Text
-                    style={{
-                      color: '#E2E8F0',
-                      fontSize: 18,
-                      fontWeight: '600',
-                      marginTop: 16,
-                      marginBottom: 8,
-                    }}
+                {/* Compare button - below items when list has items */}
+                {itemCount > 0 && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handleComparePrices}
+                    style={{ width: '100%', marginTop: 16 }}
                   >
-                    No Saved Lists
-                  </Text>
-                  <Text
-                    style={{
-                      color: '#94A3B8',
-                      fontSize: 14,
-                      textAlign: 'center',
-                    }}
-                  >
-                    Save lists to access them later
-                  </Text>
-                </View>
-              ) : (
-                <View style={{ gap: 12 }}>
-                  {savedLists.map((list) => {
-                    const totals = calculateListTotal(list);
-                    const isCurrent =
-                      list.id === groceryList?.id ||
-                      list.name
-                        .toLowerCase()
-                        .includes('shopping') ||
-                      list.id === 'default-list';
-                    return (
-                      <TouchableOpacity
-                        key={list.id}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          if (isCurrent) {
-                            setActiveTab('current');
-                          } else {
-                            router.push(`/list/${list.id}`);
-                          }
-                        }}
-                        style={{
-                          backgroundColor: isCurrent
-                            ? 'rgba(59, 130, 246, 0.1)'
-                            : 'rgba(15, 23, 42, 0.6)',
-                          borderRadius: 12,
-                          padding: 16,
-                          borderWidth: 1,
-                          borderColor: isCurrent
-                            ? 'rgba(59, 130, 246, 0.3)'
-                            : 'rgba(148, 163, 184, 0.1)',
-                        }}
-                      >
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: '#FFFFFF',
-                                marginBottom: 4,
-                              }}
-                            >
-                              {list.name}
-                            </Text>
-                            <Text style={{ fontSize: 14, color: '#94A3B8' }}>
-                              {list.items.length} item
-                              {list.items.length !== 1 ? 's' : ''}
-                              {totals.total > 0
-                                ? ` • $${totals.total.toFixed(2)}`
-                                : ''}
-                            </Text>
-                          </View>
-                          {isCurrent && (
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={20}
-                              color="#3B82F6"
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Tab: History (Last Bought / Recently Bought) */}
-          {activeTab === 'history' && (
-            <View>
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: '700',
-                  color: '#FFFFFF',
-                  marginBottom: 16,
-                }}
-              >
-                History
-              </Text>
-              <View
-                style={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                  borderRadius: 16,
-                  padding: 32,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: 'rgba(148, 163, 184, 0.1)',
-                }}
-              >
-                <Ionicons name="receipt-outline" size={56} color="#64748B" />
-                <Text
-                  style={{
-                    color: '#E2E8F0',
-                    fontSize: 16,
-                    fontWeight: '600',
-                    marginTop: 16,
-                    marginBottom: 8,
-                  }}
-                >
-                  Last Bought & Recently Bought
-                </Text>
-                <Text
-                  style={{
-                    color: '#94A3B8',
-                    fontSize: 14,
-                    textAlign: 'center',
-                    marginBottom: 20,
-                  }}
-                >
-                  View your purchase history
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => router.push('/(tabs)/purchase-history')}
-                  style={{
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    borderRadius: 12,
-                    paddingVertical: 14,
-                    paddingHorizontal: 24,
-                    borderWidth: 1,
-                    borderColor: 'rgba(59, 130, 246, 0.3)',
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: '#3B82F6',
-                      fontSize: 15,
-                      fontWeight: '600',
-                    }}
-                  >
-                    View Purchase History
-                  </Text>
-                </TouchableOpacity>
+                    <LinearGradient
+                      colors={['#3B82F6', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{
+                        borderRadius: 12,
+                        paddingVertical: 16,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
+                        Compare Prices Across Stores
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
               </View>
-            </View>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>
