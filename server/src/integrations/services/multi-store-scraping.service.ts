@@ -81,6 +81,11 @@ export class MultiStoreScrapingService {
     'audio advisor', 'tozo', 'focus camera', 'stones ace', 'ugreen',
     // US grocery / produce / delivery (Serper often returns these)
     'melissa\'s', 'melissas', 'miami fruit', 'miamifruit', 'bevmo', 'locavore', 'cooklist',
+    'schnuck', 'thrive market', 'central market', 'hannaford', 'brookshires', 'gopuff',
+    'food depot', 'the orchard', 'wilson farm', 'lambs fresh', 'fresh central', 'nude foods',
+    'iheartfruit', 'fresh by 4roots', 'kesar grocery', 'monika\'s organics', 'farm to people',
+    'pure & good', 'suji fresh', 'concord market', 'super1foods', 'golden door', 'foodservicedirect',
+    'tootyfruity', 'round eye', 'officecrave',
   ];
 
   /**

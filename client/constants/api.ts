@@ -16,7 +16,9 @@
 
 // For development on physical device or emulator
 // IMPORTANT: Backend runs on port 3000. Expo/Metro uses 8081 – do not use 8081 for API.
-// Override without code change: set EXPO_PUBLIC_API_URL in .env (e.g. EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000)
+// To use LOCAL server (faster, no Render cold start): in client/.env set:
+//   EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000   (e.g. http://192.168.1.5:3000)
+// Then run: cd server && npm run start:dev   and   cd client && npx expo start
 const DEFAULT_API_BASE_URL = 'https://pricelens-1.onrender.com';
 export const API_BASE_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim()) || DEFAULT_API_BASE_URL;

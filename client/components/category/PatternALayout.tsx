@@ -701,8 +701,8 @@ export default function PatternALayout({
       // CRITICAL: Register controller so it can be cancelled when category changes
       abortControllersRef.current.add(controller);
       
-      // Increase timeout for pagination requests (page > 1) as they may take longer
-      const timeoutDuration = page > 1 ? 20000 : 15000; // 20s for pagination, 15s for initial search
+      // Backend may call Serper (slow); use longer timeouts so "apple" in groceries etc. can complete
+      const timeoutDuration = page > 1 ? 25000 : 35000; // 25s pagination, 35s initial search
       const timeoutId = setTimeout(() => {
         controller.abort();
         abortControllersRef.current.delete(controller);

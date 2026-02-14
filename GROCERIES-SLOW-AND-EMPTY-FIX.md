@@ -44,6 +44,16 @@
 - **On Render**: Ensure **SERPER_API_KEY** (or your SerpAPI key) is set and valid so Serper can return grocery (and other) products.
 - After the first successful load, groceries (and others) will be in the DB, so **next time** the same category will load from the DB and be much faster.
 
+## Faster when developing locally
+
+If you run the **server on your machine** (`cd server && npm run start:dev`), the app still talks to **Render** unless you point it to your PC:
+
+1. In **client** folder create or edit **.env** and add:
+   - `EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000`  
+   (Replace YOUR_PC_IP with your machine’s IP, e.g. `192.168.1.5` — get it with `ipconfig` on Windows.)
+2. Restart Metro: `cd client && npx expo start`.
+3. Then popular items and search (e.g. “apple” in groceries) use your local backend and are much faster; no Render cold start.
+
 ## If items still don’t show
 
 1. Check Render logs for `/products/popular?categorySlug=groceries` (errors, 401, timeouts).

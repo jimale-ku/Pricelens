@@ -4451,15 +4451,24 @@ export class ProductsService {
         }
         const data = await res.json();
         const shopping = data.shopping || [];
-        // Serper may use image, thumbnail, or productImage; normalize so we don't drop all results
-        shoppingResults = shopping.map((r: any) => ({
-          title: r.title,
-          source: r.source || r.merchant || 'Unknown',
-          price: r.price ?? r.extractedPrice ?? '',
-          link: r.link,
-          thumbnail: r.image || r.thumbnail || (r as any).productImage || '',
-          image: r.image || r.thumbnail || (r as any).productImage || '',
-        }));
+        // Serper can return image in different shapes: string URL, or object with .url / .link
+        const pickImage = (r: any): string => {
+          const raw = r.image ?? r.thumbnail ?? (r as any).productImage ?? (r as any).thumbnail_url ?? (r as any).imageUrl ?? '';
+          if (typeof raw === 'string' && raw.trim()) return raw.trim();
+          if (raw && typeof raw === 'object' && (raw.url || raw.link)) return (raw.url || raw.link) || '';
+          return '';
+        };
+        shoppingResults = shopping.map((r: any) => {
+          const img = pickImage(r);
+          return {
+            title: r.title,
+            source: r.source || r.merchant || 'Unknown',
+            price: r.price ?? r.extractedPrice ?? '',
+            link: r.link,
+            thumbnail: img,
+            image: img,
+          };
+        });
       }
 
       // Count unique stores
@@ -4483,27 +4492,27 @@ export class ProductsService {
       ]);
       
       for (const result of shoppingResults) {
-        // Extract image - handle protocol-relative URLs (//example.com) and ensure we always have an image
-        // SerpAPI provides: thumbnail, image, or sometimes thumbnail field contains the URL
-        const rawImage = result.thumbnail || result.image || (result as any).productImage || (result as any).thumbnail_url || '';
+        // Extract image - handle protocol-relative URLs and object-shaped image (e.g. { url: "..." })
+        const rawImage = result.thumbnail || result.image || (result as any).productImage || (result as any).thumbnail_url || (result as any).serpapi_thumbnail || '';
         let image = '';
-        if (rawImage && typeof rawImage === 'string') {
-          const trimmed = rawImage.trim();
+        const raw = typeof rawImage === 'object' && rawImage !== null
+          ? (rawImage.url || rawImage.link || '')
+          : (typeof rawImage === 'string' ? rawImage : '');
+        if (raw && typeof raw === 'string') {
+          const trimmed = raw.trim();
           if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
             image = trimmed;
           } else if (trimmed.startsWith('//')) {
-            // Protocol-relative URL - add https:
             image = `https:${trimmed}`;
           } else if (trimmed.length > 0 && !trimmed.includes('placeholder')) {
-            // Try to fix common issues, but skip if it's already a placeholder
             image = trimmed.startsWith('/') ? `https:${trimmed}` : `https://${trimmed}`;
           }
         }
-        
-        // CRITICAL: User wants REAL images only - skip products without images
+        // If Serper/SerpAPI returned no image URL, use a placeholder so we still show the product (better than dropping all results)
         if (!image || !image.startsWith('http')) {
-          console.log(`⚠️ Skipping product "${result.title}" - no real image from SerpAPI`);
-          continue; // Skip products without real images
+          const apiLabel = useSerpAPI ? 'SerpAPI' : 'Serper';
+          this.devLog(`⚠️ No image URL for "${result.title}" from ${apiLabel}, using placeholder`);
+          image = `https://via.placeholder.com/200x200?text=${encodeURIComponent((result.title || 'Product').substring(0, 20))}`;
         }
         
         // Extract price - try price, extractedPrice, and "From $X.XX" style
