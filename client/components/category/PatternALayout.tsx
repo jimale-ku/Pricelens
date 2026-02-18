@@ -702,8 +702,11 @@ export default function PatternALayout({
       // CRITICAL: Register controller so it can be cancelled when category changes
       abortControllersRef.current.add(controller);
       
-      // Backend may call Serper (slow); use longer timeouts so "apple" in groceries etc. can complete
-      const timeoutDuration = page > 1 ? 25000 : 35000; // 25s pagination, 35s initial search
+      // Backend may call Serper (slow). Render cold start can take 50s+ so use longer timeout when using production.
+      const isProductionBackend = typeof API_BASE_URL === 'string' && API_BASE_URL.includes('onrender.com');
+      const timeoutDuration = isProductionBackend
+        ? (page > 1 ? 45000 : 70000)  // 45s pagination, 70s initial (cold start)
+        : (page > 1 ? 25000 : 35000); // 25s / 35s for local
       const timeoutId = setTimeout(() => {
         controller.abort();
         abortControllersRef.current.delete(controller);
@@ -722,7 +725,9 @@ export default function PatternALayout({
       abortControllersRef.current.delete(controller);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const err: any = new Error(`HTTP ${response.status}: ${response.statusText}`);
+        err.status = response.status;
+        throw err;
       }
       
       const data = await response.json();
@@ -862,8 +867,19 @@ export default function PatternALayout({
           [{ text: 'OK' }]
         );
       } else {
-        // Don't show alert for timeout/abort errors - just log
-        if (error.name !== 'AbortError') {
+        if (error.name === 'AbortError') {
+          Alert.alert(
+            'Taking Longer Than Usual',
+            'The server may be starting up. Please try again in a moment.',
+            [{ text: 'OK' }]
+          );
+        } else if (error.status >= 500 && error.status < 600) {
+          Alert.alert(
+            'Server Temporarily Unavailable',
+            'Something went wrong on our end. Please try again in a moment.',
+            [{ text: 'OK' }]
+          );
+        } else if (error.name !== 'AbortError') {
           Alert.alert(
             'Search Error',
             error.message || 'Failed to search products. Please try again.',
@@ -1360,8 +1376,8 @@ export default function PatternALayout({
             </Text>
           </View>
           
-          {/* Subcategory Section - Browse by Category (above search per client request) */}
-          {displaySubcategories.length > 0 && (
+          {/* Subcategory Section - Browse by Category. Hidden for groceries & electronics per client (search + popular items + ad only). */}
+          {displaySubcategories.length > 0 && !['groceries', 'electronics'].includes(categorySlug) && (
             <View style={{
               backgroundColor: 'rgba(21, 27, 40, 0.6)',
               borderRadius: 16,

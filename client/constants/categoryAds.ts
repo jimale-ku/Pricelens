@@ -185,6 +185,15 @@ export const CATEGORY_ADS: Record<string, CategoryAdContent> = {
     ctaUrl: 'https://example.com/sleepwell',
     imageUrl: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=800',
   },
+  'all-retailers': {
+    label: 'ADVERTISEMENT',
+    sponsorName: 'Sponsored by PriceLens',
+    headline: 'Compare Prices Across 100+ Retailers',
+    body: 'Search any product and see prices from Amazon, Walmart, Target, Best Buy, and more. Find the best deal in one place.',
+    ctaText: 'Start Comparing',
+    ctaUrl: 'https://example.com/pricelens',
+    imageUrl: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800',
+  },
 };
 
 /**

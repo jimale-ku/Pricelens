@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ProductComparisonPage from '@/components/ProductComparisonPage';
 import { API_ENDPOINTS, API_BASE_URL } from '@/constants/api';
 import { transformCompareResponse } from '@/utils/apiTransform';
-import { priceDataCache } from '@/utils/priceDataCache';
+import { priceDataCache, getProductImageForCompare } from '@/utils/priceDataCache';
 
 /**
  * Generate fallback search queries when exact match fails
@@ -991,7 +991,7 @@ export default function ProductCompareScreen() {
     <ProductComparisonPage
       productId={productData.id}
       productName={productData.name}
-      productImage={productData.image}
+      productImage={productData.image || getProductImageForCompare(productData.id) || ''}
       category={productData.category}
       categorySlug={slug || ''}
       storePrices={productData.storePrices || []}

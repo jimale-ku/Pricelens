@@ -15,7 +15,7 @@ import { ScrollView, View, Text, Image, TouchableOpacity, SafeAreaView, useWindo
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import StoreCard from './StoreCard';
 import AppHeader from './AppHeader';
 import { API_ENDPOINTS } from '../constants/api';
@@ -275,7 +275,8 @@ export default function ProductComparisonPage({
     };
   }, [filteredAndSortedPrices]);
 
-  // Determine final image URL
+  // Determine final image URL - persist first valid image so it doesn't disappear on re-render
+  const lastValidImageRef = useRef<string | null>(null);
   let finalImageUri = 'https://via.placeholder.com/96x96/1e2736/8b95a8?text=No+Image';
   
   if (productImage && typeof productImage === 'string') {
@@ -290,7 +291,12 @@ export default function ProductComparisonPage({
     
     if (isValidUrl && !isPlaceholder) {
       finalImageUri = trimmed;
+      lastValidImageRef.current = trimmed;
     }
+  }
+  // Keep showing last valid image if current prop is empty (fix: image disappearing when opening product)
+  if (finalImageUri.includes('placeholder') && lastValidImageRef.current) {
+    finalImageUri = lastValidImageRef.current;
   }
 
   return (
@@ -377,47 +383,7 @@ export default function ProductComparisonPage({
           borderBottomWidth: 1,
           borderBottomColor: 'rgba(139, 149, 168, 0.1)',
         }}>
-          {/* Store Search Input */}
-          <View style={{
-            flexDirection: 'row',
-            gap: 8,
-          }}>
-            <TextInput
-              style={{
-                flex: 1,
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: 'rgba(139, 149, 168, 0.2)',
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                color: '#e8edf4',
-                fontSize: 14,
-              }}
-              placeholder="Search for a store..."
-              placeholderTextColor="#8b95a8"
-              value={storeSearchQuery}
-              onChangeText={setStoreSearchQuery}
-            />
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                // Search is handled by the filter logic automatically
-              }}
-              style={{
-                paddingHorizontal: 20,
-                paddingVertical: 10,
-                backgroundColor: '#6366f1',
-                borderRadius: 8,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
-              <Ionicons name="search" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-
-          {/* ZIP Code Input */}
+          {/* ZIP Code Input - with Enter button to find stores */}
           <View>
             <Text style={{
               color: '#94a3b8',
@@ -426,24 +392,52 @@ export default function ProductComparisonPage({
             }}>
               Find stores near you
             </Text>
-            <TextInput
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: 'rgba(139, 149, 168, 0.2)',
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                color: '#e8edf4',
-                fontSize: 14,
-              }}
-              placeholder="Enter ZIP code (e.g., 10001)"
-              placeholderTextColor="#8b95a8"
-              value={zipCode}
-              onChangeText={setZipCode}
-              keyboardType="numeric"
-              maxLength={5}
-            />
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: 'rgba(139, 149, 168, 0.2)',
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: '#e8edf4',
+                  fontSize: 14,
+                }}
+                placeholder="Enter ZIP code (e.g., 10001)"
+                placeholderTextColor="#8b95a8"
+                value={zipCode}
+                onChangeText={setZipCode}
+                keyboardType="numeric"
+                maxLength={5}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (zipCode.trim().length === 5 && /^\d{5}$/.test(zipCode.trim())) {
+                    // Trigger same effect as useEffect (find stores) - state update already triggers useEffect
+                    return;
+                  }
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (zipCode.trim().length === 5 && /^\d{5}$/.test(zipCode.trim())) {
+                    // Effect will run when zipCode is set; no-op if already set
+                    setZipCode(zipCode.trim());
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  backgroundColor: '#6366f1',
+                  borderRadius: 8,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Find</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Closest Stores Display */}
@@ -782,7 +776,10 @@ export default function ProductComparisonPage({
                   const columnWidth = isMobile ? '47%' : '31%';
                   
                   return (
-                    <View key={`store-${storePrice.rank}-${index}`} style={{ width: columnWidth }}>
+                    <View key={`store-${storePrice.rank}-${index}`} style={{ 
+                      width: columnWidth,
+                      minHeight: 220, // Ensure consistent height for all price comparison boxes
+                    }}>
                       <StoreCard
                         rank={storePrice.rank}
                         storeName={storePrice.storeName}

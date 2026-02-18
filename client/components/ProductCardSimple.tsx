@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { addItemToList, getCurrentList } from '@/utils/listService';
+import { setProductImageForCompare } from '@/utils/priceDataCache';
 import { toggleFavorite, isFavorite as checkIsFavorite } from '@/utils/favoritesService';
 import type { FavoriteProduct } from '@/utils/favoritesService';
 
@@ -69,13 +70,15 @@ export default function ProductCardSimple({
 
   // Handle "View Prices" button - navigate to comparison page
   const handleViewPrices = () => {
+    // Cache product image so compare page can show it if API doesn't return one
+    if (productId && productImage) {
+      setProductImageForCompare(productId.toString(), productImage);
+    }
     // Navigate to: /category/[categorySlug]/[productSlug]/compare?productId=[id]&productName=[name]
-    // Pass both product ID and actual product name to ensure correct matching
     const params = new URLSearchParams();
     if (productId) {
       params.append('productId', productId.toString());
     }
-    // Pass actual product name (not slug) to ensure correct search if ID lookup fails
     if (productName) {
       params.append('productName', productName);
     }
@@ -131,8 +134,7 @@ export default function ProductCardSimple({
       );
       
       if (result.success) {
-        // Show brief success feedback (no alert to avoid interrupting flow)
-        // Alert.alert('Success', result.message);
+        Alert.alert('Added to list', result.message || `Added to ${result.listName || 'your list'}!`);
       } else {
         Alert.alert('Error', result.message);
       }
@@ -238,7 +240,7 @@ export default function ProductCardSimple({
           marginBottom: 6,
           numberOfLines: 2,
         }}>
-          {productName}
+          {typeof productName === 'string' ? productName.replace(/\b\w/g, c => c.toUpperCase()) : productName}
         </Text>
         
         {/* Category Badge */}
@@ -255,7 +257,7 @@ export default function ProductCardSimple({
             fontSize: 12,
             fontWeight: '500',
           }}>
-            {category}
+            {typeof category === 'string' ? category.replace(/\b\w/g, c => c.toUpperCase()) : category}
           </Text>
         </View>
       </View>

@@ -169,7 +169,7 @@ function AnimatedCategoryCard({
           onPress={handlePress}
           style={{
             width: '100%',
-            minHeight: 180, // Ensure consistent card height
+            height: 200, // Fixed height for all cards (was minHeight: 180)
             backgroundColor: 'rgba(21, 27, 40, 0.6)',
             borderRadius: 20,
             padding: 24,

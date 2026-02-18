@@ -2752,8 +2752,99 @@ export class ProductsService {
       return this.orderIphoneResults(products, lowerQuery);
     }
     
+    // For "all-retailers" or electronics, prioritize popular brands for headphones
+    if ((categorySlug === 'all-retailers' || categorySlug === 'electronics') && 
+        (lowerQuery.includes('headphone') || lowerQuery.includes('earbud') || lowerQuery.includes('earphone'))) {
+      return this.orderHeadphonesByPopularBrands(products, lowerQuery);
+    }
+    
+    // For groceries "apple" search: prioritize classic apples (Gala, Honeycrisp, etc.) from major retailers
+    if (categorySlug === 'groceries' && (lowerQuery === 'apple' || lowerQuery.includes('apple'))) {
+      return this.orderGroceriesAppleResults(products);
+    }
+    
     // For other categories, maintain current order (already sorted by relevance)
     return products;
+  }
+  
+  /**
+   * Order groceries "apple" results: classic apple types + major retailers first (not Miami Fruit, etc.)
+   */
+  private orderGroceriesAppleResults(products: any[]): any[] {
+    const classicAppleTypes = ['gala', 'honeycrisp', 'fuji', 'red delicious', 'granny smith', 'pink lady', 'organic apple', 'fresh apple'];
+    const majorRetailers = ['walmart', 'target', 'amazon', 'costco', 'kroger', 'aldi', 'whole foods', 'safeway'];
+    
+    return products.sort((a, b) => {
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+      const aStore = (a.category || a.store || '').toLowerCase();
+      const bStore = (b.category || b.store || '').toLowerCase();
+      
+      const aIsClassic = classicAppleTypes.some(t => aName.includes(t));
+      const bIsClassic = classicAppleTypes.some(t => bName.includes(t));
+      const aIsMajorRetailer = majorRetailers.some(r => aName.includes(r) || aStore.includes(r));
+      const bIsMajorRetailer = majorRetailers.some(r => bName.includes(r) || bStore.includes(r));
+      const aIsExotic = aName.includes('miami fruit') || aName.includes('hidden rose') || aName.includes('exotic');
+      const bIsExotic = bName.includes('miami fruit') || bName.includes('hidden rose') || bName.includes('exotic');
+      
+      // Exotic/specialty last
+      if (aIsExotic && !bIsExotic) return 1;
+      if (!aIsExotic && bIsExotic) return -1;
+      // Classic types first
+      if (aIsClassic && !bIsClassic) return -1;
+      if (!aIsClassic && bIsClassic) return 1;
+      // Then major retailer
+      if (aIsMajorRetailer && !bIsMajorRetailer) return -1;
+      if (!aIsMajorRetailer && bIsMajorRetailer) return 1;
+      return 0;
+    });
+  }
+  
+  /**
+   * Order headphones by popular brands (Apple, Bose, Sony, etc.) - like Google search
+   */
+  private orderHeadphonesByPopularBrands(products: any[], query: string): any[] {
+    // Popular brands in order of priority (most popular first)
+    const popularBrands = [
+      'apple', 'airpods', 'beats', // Apple ecosystem
+      'bose', 'quietcomfort', 'qc', // Bose
+      'sony', 'wh-1000', 'wf-1000', 'xm', // Sony
+      'sennheiser', 'momentum', // Sennheiser
+      'jbl', // JBL
+      'samsung', 'galaxy buds', // Samsung
+      'jabra', // Jabra
+      'anker', 'soundcore', // Anker
+      'skullcandy', // Skullcandy
+      'audio-technica', 'ath-', // Audio-Technica
+    ];
+    
+    return products.sort((a, b) => {
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+      
+      // Find brand priority for each product
+      let aPriority = Infinity;
+      let bPriority = Infinity;
+      
+      for (let i = 0; i < popularBrands.length; i++) {
+        if (aName.includes(popularBrands[i]) && aPriority === Infinity) {
+          aPriority = i;
+        }
+        if (bName.includes(popularBrands[i]) && bPriority === Infinity) {
+          bPriority = i;
+        }
+      }
+      
+      // Popular brands first (lower priority number = higher priority)
+      if (aPriority !== Infinity && bPriority === Infinity) return -1;
+      if (aPriority === Infinity && bPriority !== Infinity) return 1;
+      if (aPriority !== Infinity && bPriority !== Infinity) {
+        return aPriority - bPriority;
+      }
+      
+      // If neither has a popular brand, maintain original order
+      return 0;
+    });
   }
   
   /**

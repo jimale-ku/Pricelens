@@ -57,3 +57,17 @@ class PriceDataCache {
 
 // Export singleton instance
 export const priceDataCache = new PriceDataCache();
+
+/**
+ * Cache product image URL by productId when navigating to compare page.
+ * Compare page can use this when API response has no image (fix: image disappearing).
+ */
+const productImageById: Map<string, string> = new Map();
+export function setProductImageForCompare(productId: string, imageUrl: string): void {
+  if (productId && imageUrl && imageUrl.startsWith('http')) {
+    productImageById.set(productId, imageUrl);
+  }
+}
+export function getProductImageForCompare(productId: string): string | undefined {
+  return productId ? productImageById.get(productId) : undefined;
+}
