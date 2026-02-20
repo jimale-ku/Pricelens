@@ -848,10 +848,16 @@ export class MultiStoreScrapingService {
         const priceText = result.price || '0';
         
         // USA-only: include only stores that are known USA retailers
-        if (!this.isUSAStore(result.source || result.link || '')) {
-          this.logger.debug(`   ⏭️ Skipping non-USA store: ${result.source || 'Unknown'}`);
+        // RELAXED: Allow stores that don't match non-USA patterns (be more inclusive)
+        // This allows more stores to show up (user wants 20+ stores)
+        const storeSource = result.source || result.link || '';
+        const isNonUSA = this.NON_USA_PATTERNS.some(pattern => storeSource.toLowerCase().includes(pattern.toLowerCase()));
+        if (isNonUSA) {
+          this.logger.debug(`   ⏭️ Skipping non-USA store: ${storeSource}`);
           continue;
         }
+        // If it's not a known USA store but also not a non-USA store, include it (relaxed filtering)
+        // This allows more stores from Serper to show up
         
         // Reduce logging verbosity - only log every 10th result or important ones
         if (storePrices.length % 10 === 0 || storePrices.length < 5) {
@@ -973,80 +979,93 @@ export class MultiStoreScrapingService {
         }
         
         // OPTIMIZATION: isElectronics already calculated before the loop
+        // RELAXED: Be less strict with product matching to allow more stores
+        // User wants to see 20+ stores, so we need to be more inclusive
         if (isElectronics) {
-          // STRICT matching for electronics (iPhone, Samsung, etc.)
-          // For "iPhone 17 Pro Max", result MUST contain "iphone"
-          // For "Samsung Galaxy S24", result MUST contain "samsung" AND "galaxy"
+          // RELAXED matching for electronics - only filter out clearly unrelated products
+          // For "iPhone", result should contain "iphone" or be from a known electronics store
           const mainProductWords = productKeywords.filter(word => 
             word.length > 3 && // Skip short words like "17", "pro", "max"
             !['inch', 'gb', 'tb', 'pro', 'max', 'mini', 'plus', 'ultra'].includes(word)
           );
           
+          // Only filter if we have main product words AND result doesn't contain ANY of them
+          // This is more lenient - allows more results through
           if (mainProductWords.length > 0) {
-            // Result must contain at least one main product word
             const hasMainWord = mainProductWords.some(word => resultTitle.includes(word));
-            if (!hasMainWord) {
+            // RELAXED: Only skip if it's clearly unrelated (no main words AND no brand match)
+            const hasBrandMatch = productNameLower.includes('iphone') && resultTitle.includes('iphone') ||
+                                 productNameLower.includes('samsung') && resultTitle.includes('samsung') ||
+                                 productNameLower.includes('galaxy') && resultTitle.includes('galaxy');
+            
+            if (!hasMainWord && !hasBrandMatch) {
+              // Only skip if it's clearly unrelated
               this.logger.debug(`   ⏭️ Skipping unrelated product: "${result.title}" (doesn't contain main product words: ${mainProductWords.join(', ')})`);
               continue;
             }
           } else {
-            // Fallback: For short queries like "iPhone 17 Pro Max", check for brand/model
+            // Fallback: For short queries, be lenient
             if (productNameLower.includes('iphone')) {
-              if (!resultTitle.includes('iphone')) {
-                this.logger.debug(`   ⏭️ Skipping unrelated product: "${result.title}" (no "iPhone" in title)`);
+              // Only skip if it's clearly not an iPhone (very lenient)
+              if (!resultTitle.includes('iphone') && !resultTitle.includes('apple') && !resultTitle.includes('smartphone')) {
+                this.logger.debug(`   ⏭️ Skipping unrelated product: "${result.title}" (no iPhone/Apple/smartphone in title)`);
                 continue;
               }
             }
           }
           
-          // For specific models (e.g., "iPhone 17 Pro Max"), ensure result mentions key identifiers
-          // Extract model number (e.g., "17") and variant (e.g., "pro max")
+          // RELAXED: For specific models, be more lenient to allow more stores
+          // User wants 20+ stores, so we should allow similar models and variants
           const modelNumberMatch = productNameLower.match(/\b(\d+)\b/);
           const hasProMax = productNameLower.includes('pro max');
           const hasPro = productNameLower.includes('pro') && !productNameLower.includes('pro max');
           
           if (modelNumberMatch) {
             const modelNumber = modelNumberMatch[1];
-            // If searching for "iPhone 17", result should contain "17" or be clearly the same generation
-            // But allow some flexibility for older/newer models
+            // RELAXED: Allow any iPhone model number (don't be too strict)
+            // Only skip if it's clearly a different product category
             if (!resultTitle.includes(modelNumber) && !resultTitle.includes('seventeen')) {
-              // Check if it's a close model (e.g., 16 for 17 search is OK, but not 12)
+              // Check if it's a close model (allow more flexibility)
               const closeModels = {
-                '17': ['16', '18', '15'],
-                '16': ['17', '15', '18'],
-                '15': ['16', '14', '17'],
+                '17': ['16', '18', '15', '14', '13', '12'],
+                '16': ['17', '15', '18', '14', '13'],
+                '15': ['16', '14', '17', '13', '12'],
+                '14': ['15', '13', '16', '12'],
+                '13': ['14', '12', '15'],
               };
               const closeModelNumbers = closeModels[modelNumber as keyof typeof closeModels] || [];
               const isCloseModel = closeModelNumbers.some(num => resultTitle.includes(num));
               
-              if (!isCloseModel && hasProMax) {
-                // For "iPhone 17 Pro Max", be strict - must have "17" or close model
+              // RELAXED: Only skip if it's clearly a wrong model AND we're searching for Pro Max
+              // For regular searches, allow more flexibility - show any iPhone
+              if (!isCloseModel && hasProMax && !resultTitle.includes('iphone') && !resultTitle.includes('apple')) {
+                // Only skip if it's clearly not an iPhone at all
                 this.logger.debug(`   ⏭️ Skipping wrong model: "${result.title}" (searching for ${modelNumber}, no match found)`);
                 continue;
               }
+              // For non-Pro Max searches, be even more lenient - allow any iPhone model
             }
           }
           
-          // For "Pro Max" variants, ensure result mentions "pro max" or at least "pro"
+          // RELAXED: For variants, be more lenient
+          // Allow Pro Max results even if searching for Pro (and vice versa)
+          // User wants more stores, so show similar variants
           if (hasProMax) {
-            if (!resultTitle.includes('pro max') && !resultTitle.includes('promax')) {
-              // Allow "pro" if it's clearly a Pro Max variant
-              if (!resultTitle.includes('pro') || resultTitle.includes('pro ')) {
-                this.logger.debug(`   ⏭️ Skipping wrong variant: "${result.title}" (searching for Pro Max, but result doesn't match)`);
-                continue;
-              }
+            // Allow Pro Max, Pro, or regular iPhone - be lenient
+            // Only skip if it's clearly not an iPhone variant
+            if (!resultTitle.includes('pro') && !resultTitle.includes('iphone') && !resultTitle.includes('apple')) {
+              this.logger.debug(`   ⏭️ Skipping wrong variant: "${result.title}" (searching for Pro Max, but result doesn't match)`);
+              continue;
             }
           } else if (hasPro) {
-            // For "Pro" (not Pro Max), ensure result mentions "pro" but not "max"
-            if (!resultTitle.includes('pro')) {
+            // RELAXED: Allow Pro Max results when searching for Pro (user wants more stores)
+            // Only skip if it's clearly not an iPhone Pro variant
+            if (!resultTitle.includes('pro') && !resultTitle.includes('iphone') && !resultTitle.includes('apple')) {
               this.logger.debug(`   ⏭️ Skipping wrong variant: "${result.title}" (searching for Pro, but result doesn't match)`);
               continue;
             }
-            // If result has "max", it's probably Pro Max, not Pro
-            if (resultTitle.includes('max') && !resultTitle.includes('pro max')) {
-              this.logger.debug(`   ⏭️ Skipping wrong variant: "${result.title}" (searching for Pro, but result is Max)`);
-              continue;
-            }
+            // RELAXED: Don't filter out Pro Max when searching for Pro - show both
+            // User wants more stores, so include similar variants
           }
         } else {
           // FLEXIBLE matching for non-electronics (mattresses, furniture, office supplies, etc.)
@@ -1169,10 +1188,11 @@ export class MultiStoreScrapingService {
           }
         } else {
           // Marketplaces: Allow multiple listings, but limit to prevent too many duplicates
+          // RELAXED: Increased limit to show more stores (user wants 20+ stores)
           // Count how many we already have from this marketplace
           const marketplaceCount = storePrices.filter(sp => this.normalizeStoreName(sp.storeName.toLowerCase()) === normalizedStore).length;
-          if (marketplaceCount >= 15) {
-            // Limit to 15 listings per marketplace to avoid spam
+          if (marketplaceCount >= 25) {
+            // RELAXED: Increased limit to 25 listings per marketplace (was 15) to show more stores
             continue;
           }
         }

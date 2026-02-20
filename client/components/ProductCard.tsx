@@ -128,11 +128,12 @@ const ProductCardComponent = function ProductCard({
     }
   };
   
-  // Show 4 stores initially, or all if expanded
-  const initialStoreCount = 4;
-  const displayStores = showAllStores ? (storePrices || []) : (storePrices || []).slice(0, initialStoreCount);
+  // Show ALL stores by default (user wants to see 20+ stores per item)
+  // Backend can return up to 100 stores, so show all available stores for better price comparison
+  // No need to limit - users want to see all available stores
+  const displayStores = storePrices || [];
   const totalStoreCount = storePrices?.length || 0;
-  const hasMoreStores = totalStoreCount > initialStoreCount;
+  const hasMoreStores = false; // Show all stores by default, no "show more" needed
   
   // Debug: Log display stores
   console.log('🏪 Display stores:', {
@@ -343,47 +344,8 @@ const ProductCardComponent = function ProductCard({
         </View>
         )}
 
-        {/* Show More Stores Button */}
-        {hasMoreStores && !showAllStores && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => setShowAllStores(true)}
-            style={{
-              marginTop: 12,
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{
-              fontSize: 14,
-              fontWeight: '600',
-              color: '#3b82f6',
-            }}>
-              Show more stores
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Show Less Button */}
-        {showAllStores && hasMoreStores && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => setShowAllStores(false)}
-            style={{
-              marginTop: 12,
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{
-              fontSize: 14,
-              fontWeight: '600',
-              color: '#3b82f6',
-            }}>
-              Show less
-            </Text>
-          </TouchableOpacity>
-        )}
+        {/* Note: All stores are shown by default - no "Show more" button needed */}
+        {/* Users want to see 20+ stores per item for better price comparison */}
       </View>
 
       {/* List Picker Modal */}

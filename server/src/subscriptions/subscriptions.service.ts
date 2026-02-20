@@ -118,8 +118,10 @@ export class SubscriptionsService {
       : plan.stripePriceId;
 
     // For testing: if no Stripe Price ID is set, use inline price_data from plan price (cents)
-    const useInlinePrice = !priceId && plan.price != null && plan.price > 0;
-    const amountCents = Math.round((plan.price || 0) * 100);
+    // Convert Prisma Decimal to number for comparison and calculation
+    const priceNumber = plan.price ? plan.price.toNumber() : 0;
+    const useInlinePrice = !priceId && plan.price != null && priceNumber > 0;
+    const amountCents = Math.round(priceNumber * 100);
     if (!priceId && !useInlinePrice) {
       throw new BadRequestException(
         useYearly

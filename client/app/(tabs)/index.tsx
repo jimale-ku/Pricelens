@@ -3,7 +3,7 @@
  * Elegant, professional design
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Animated } from "react-native";
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Animated, KeyboardAvoidingView, Platform } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useRef, useEffect } from "react";
 import { router } from 'expo-router';
@@ -148,6 +148,7 @@ function AnimatedCategoryCard({
     <Animated.View
       style={{
         width: '48%',
+        height: 200, // Fixed height to match card height exactly
         transform: [
           { scale: scaleAnim },
           { translateY: translateYAnim },
@@ -156,6 +157,8 @@ function AnimatedCategoryCard({
     >
       <Animated.View
         style={{
+          width: '100%',
+          height: '100%', // Fill parent container
           shadowColor: '#3B82F6',
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: shadowOpacityAnim,
@@ -169,13 +172,16 @@ function AnimatedCategoryCard({
           onPress={handlePress}
           style={{
             width: '100%',
-            height: 200, // Fixed height for all cards (was minHeight: 180)
+            height: '100%', // Fill parent (200px from outer container)
             backgroundColor: 'rgba(21, 27, 40, 0.6)',
             borderRadius: 20,
             padding: 24,
             borderWidth: 1.5,
             borderColor: 'rgba(59, 130, 246, 0.2)',
             overflow: 'hidden',
+            // Use flexbox column to ensure consistent layout
+            flexDirection: 'column',
+            justifyContent: 'flex-start',
           }}
         >
           {/* Gradient overlay on press */}
@@ -191,7 +197,7 @@ function AnimatedCategoryCard({
             }}
           />
           
-          {/* Icon Container */}
+          {/* Icon Container - Fixed size */}
           <View style={{
             width: 56,
             height: 56,
@@ -199,42 +205,52 @@ function AnimatedCategoryCard({
             backgroundColor: 'rgba(59, 130, 246, 0.15)',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: 16,
+            marginBottom: 16, // Fixed spacing
             borderWidth: 1,
             borderColor: 'rgba(59, 130, 246, 0.3)',
+            flexShrink: 0, // Don't shrink
           }}>
             <Ionicons name={iconName} size={28} color="#60A5FA" />
           </View>
           
-          {/* Category Name */}
+          {/* Category Name - Fixed height, single line */}
           <Text style={{
             fontSize: 17,
             fontWeight: '700',
             color: '#E2E8F0',
-            marginBottom: 8,
+            marginBottom: 8, // Fixed spacing
             letterSpacing: -0.3,
-          }}>
+            height: 22, // Fixed height (prevents wrapping differences)
+            lineHeight: 22,
+          }} numberOfLines={1} ellipsizeMode="tail">
             {category.name}
           </Text>
           
-          {/* Description */}
-          <View style={{ flex: 1, justifyContent: 'flex-start' }}>
+          {/* Description - Fixed height container (exactly 2 lines) */}
+          <View style={{ 
+            height: 40, // Fixed height for description area (2 lines: 18px lineHeight * 2 + 4px buffer)
+            justifyContent: 'flex-start',
+            marginBottom: 12, // Fixed spacing before bottom indicator
+            flexShrink: 0, // Don't shrink
+          }}>
             <Text style={{
               fontSize: 12,
               color: '#94A3B8',
               lineHeight: 18,
-              minHeight: 36, // Ensure consistent height for 2 lines
-            }} numberOfLines={2}>
+              height: 36, // Exactly 2 lines (18px * 2)
+            }} numberOfLines={2} ellipsizeMode="tail">
               {category.description}
             </Text>
           </View>
           
-          {/* Subtle indicator for double tap */}
+          {/* Subtle indicator for double tap - Fixed height at bottom */}
           <View style={{
-            marginTop: 12,
+            height: 18, // Fixed height for bottom indicator
             flexDirection: 'row',
             alignItems: 'center',
             opacity: 0.6,
+            flexShrink: 0, // Don't shrink
+            // No marginTop - fixed spacing from description above
           }}>
             <Ionicons name="arrow-forward-circle-outline" size={14} color="#64748B" />
             <Text style={{
@@ -254,6 +270,8 @@ function AnimatedCategoryCard({
 export default function HomeScreen() {
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
 
   // Get featured categories
   const featuredCategories = CATEGORY_LIST.filter((cat) =>
@@ -271,9 +289,28 @@ export default function HomeScreen() {
     }
   };
 
+  // Scroll to search input when keyboard appears
+  const handleSearchFocus = () => {
+    // Scroll to search section when input is focused
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 100, animated: true });
+    }, 300);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView 
+          ref={scrollViewRef}
+          style={{ flex: 1 }} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
         
         {/* Fixed Header + Category Pills */}
         <AppHeader />
@@ -331,8 +368,10 @@ export default function HomeScreen() {
               }}>
                 <Ionicons name="search" size={20} color="#94A3B8" style={{ marginRight: 12 }} />
                 <TextInput
+                  ref={searchInputRef}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
+                  onFocus={handleSearchFocus}
                   placeholder="Search any product across all categories..."
                   placeholderTextColor="#64748B"
                   style={{
@@ -426,7 +465,8 @@ export default function HomeScreen() {
 
         {/* Bottom Spacing */}
         <View style={{ height: 40 }} />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Categories Modal */}
       <CategoriesModal

@@ -51,45 +51,14 @@ function AnimatedCategoryCardModal({
     ]).start();
   }, []);
 
-  const handlePressOut = () => {
-    // Release animation - card raises up with bounce
-    Animated.parallel([
-      Animated.spring(translateYAnim, {
-        toValue: -6, // Raise up 6px
-        useNativeDriver: true,
-        tension: 200,
-        friction: 5,
-      }),
-      Animated.timing(shadowOpacityAnim, {
-        toValue: 0.4,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      // After raising, settle back to normal position
-      Animated.parallel([
-        Animated.spring(translateYAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 150,
-          friction: 8,
-        }),
-        Animated.timing(shadowOpacityAnim, {
-          toValue: 0.2,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-      ]).start(() => {
-        // Navigate after animation completes
-        onPress();
-      });
-    });
-  };
+  // Removed handlePressOut - now using direct onPress for explicit tap requirement
+  // This prevents accidental navigation from just touching the card
 
   return (
     <Animated.View
       style={{
         width: '48%',
+        height: 200, // Fixed height to match home screen cards exactly
         transform: [
           { scale: scaleAnim },
           { translateY: translateYAnim },
@@ -98,6 +67,8 @@ function AnimatedCategoryCardModal({
     >
       <Animated.View
         style={{
+          width: '100%',
+          height: '100%', // Fill parent container
           shadowColor: '#3B82F6',
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: shadowOpacityAnim,
@@ -107,16 +78,19 @@ function AnimatedCategoryCardModal({
       >
         <TouchableOpacity
           activeOpacity={1}
-          onPressOut={handlePressOut}
+          onPress={onPress} // Use onPress instead of onPressOut to require explicit tap
           style={{
             width: '100%',
-            minHeight: 160, // Ensure consistent card height
+            height: '100%', // Fill parent (200px from outer container)
             backgroundColor: 'rgba(21, 27, 40, 0.6)',
-            borderRadius: 16,
-            padding: 20,
+            borderRadius: 20,
+            padding: 24,
             borderWidth: 1.5,
             borderColor: 'rgba(59, 130, 246, 0.2)',
             overflow: 'hidden',
+            // Use flexbox column to ensure consistent layout
+            flexDirection: 'column',
+            justifyContent: 'flex-start',
           }}
         >
           {/* Gradient overlay on press */}
@@ -132,34 +106,69 @@ function AnimatedCategoryCardModal({
             }}
           />
           
+          {/* Icon Container - Fixed size */}
           <View style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
+            width: 56,
+            height: 56,
+            borderRadius: 16,
             backgroundColor: 'rgba(59, 130, 246, 0.15)',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: 12,
+            marginBottom: 16, // Fixed spacing
             borderWidth: 1,
             borderColor: 'rgba(59, 130, 246, 0.3)',
+            flexShrink: 0, // Don't shrink
           }}>
-            <Ionicons name={iconName} size={24} color="#60A5FA" />
+            <Ionicons name={iconName} size={28} color="#60A5FA" />
           </View>
+          
+          {/* Category Name - Fixed height, single line */}
           <Text style={{
-            fontSize: 16,
-            fontWeight: '600',
+            fontSize: 17,
+            fontWeight: '700',
             color: '#E2E8F0',
-            marginBottom: 4,
-          }}>
+            marginBottom: 8, // Fixed spacing
+            letterSpacing: -0.3,
+            height: 22, // Fixed height (prevents wrapping differences)
+            lineHeight: 22,
+          }} numberOfLines={1} ellipsizeMode="tail">
             {category.name}
           </Text>
-          <Text style={{
-            fontSize: 12,
-            color: '#94A3B8',
-            lineHeight: 16,
-          }} numberOfLines={2}>
-            {category.description}
-          </Text>
+          
+          {/* Description - Fixed height container (exactly 2 lines) */}
+          <View style={{ 
+            height: 40, // Fixed height for description area (2 lines: 18px lineHeight * 2 + 4px buffer)
+            justifyContent: 'flex-start',
+            marginBottom: 12, // Fixed spacing before bottom indicator
+            flexShrink: 0, // Don't shrink
+          }}>
+            <Text style={{
+              fontSize: 12,
+              color: '#94A3B8',
+              lineHeight: 18,
+              height: 36, // Exactly 2 lines (18px * 2)
+            }} numberOfLines={2} ellipsizeMode="tail">
+              {category.description}
+            </Text>
+          </View>
+          
+          {/* Subtle indicator for double tap - Fixed height at bottom */}
+          <View style={{
+            height: 18, // Fixed height for bottom indicator
+            flexDirection: 'row',
+            alignItems: 'center',
+            opacity: 0.6,
+            flexShrink: 0, // Don't shrink
+          }}>
+            <Ionicons name="arrow-forward-circle-outline" size={14} color="#64748B" />
+            <Text style={{
+              fontSize: 11,
+              color: '#64748B',
+              marginLeft: 4,
+            }}>
+              Tap to explore
+            </Text>
+          </View>
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -174,8 +183,12 @@ export default function CategoriesModal({ visible, onClose }: CategoriesModalPro
   );
 
   const handleCategoryPress = (slug: string) => {
+    // Close modal first
     onClose();
-    router.push(`/category/${slug}`);
+    // Small delay to prevent AppHeader from auto-selecting before navigation completes
+    setTimeout(() => {
+      router.push(`/category/${slug}`);
+    }, 100);
   };
 
   return (

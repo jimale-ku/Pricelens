@@ -27,6 +27,29 @@ export class StoreLocationsController {
     return this.storeLocationsService.findNearby(findNearbyDto);
   }
 
+  @Get('nearby-by-names')
+  @ApiOperation({ summary: 'Find nearby stores by ZIP or by lat/lng (Use my location)' })
+  findNearbyByStoreNames(
+    @Query('zipCode') zipCode: string,
+    @Query('lat') latParam: string,
+    @Query('lng') lngParam: string,
+    @Query('storeNames') storeNamesParam: string,
+    @Query('radius') radius?: string,
+  ) {
+    const storeNames = storeNamesParam ? storeNamesParam.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const radiusMiles = radius ? Math.min(100, Math.max(5, parseInt(radius, 10) || 50)) : 50;
+
+    const lat = latParam != null ? parseFloat(latParam) : NaN;
+    const lng = lngParam != null ? parseFloat(lngParam) : NaN;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return this.storeLocationsService.findNearbyByStoreNamesWithCoords(lat, lng, storeNames, radiusMiles);
+    }
+    if (zipCode?.trim()) {
+      return this.storeLocationsService.findNearbyByStoreNames(zipCode.trim(), storeNames, radiusMiles);
+    }
+    return [];
+  }
+
   @Get('store/:storeId')
   @ApiOperation({ summary: 'Get all locations for a store' })
   findByStore(@Param('storeId') storeId: string) {

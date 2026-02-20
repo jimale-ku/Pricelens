@@ -15,7 +15,7 @@ import { ScrollView, View, Text, Image, TouchableOpacity, SafeAreaView, useWindo
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import StoreCard from './StoreCard';
 import AppHeader from './AppHeader';
 import { API_ENDPOINTS } from '../constants/api';
@@ -81,19 +81,31 @@ export default function ProductComparisonPage({
   const [filterInStock, setFilterInStock] = useState(false);
   const [filterDelivery, setFilterDelivery] = useState<'all' | 'pickup' | 'delivery'>('all');
   const [selectedStores, setSelectedStores] = useState<string[]>([]); // Empty = all stores
-  const [zipCode, setZipCode] = useState('');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   
   // Store search state
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
-  const [closestStores, setClosestStores] = useState<any[]>([]);
-  const [loadingClosestStores, setLoadingClosestStores] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false); // For "See More" / "See Less" toggle
   
   // Infinite scroll state - show stores in batches
   const [visibleStoresCount, setVisibleStoresCount] = useState(12); // Show first 12 stores initially
   const STORES_PER_PAGE = 12; // Load 12 more stores each time user scrolls
+
+  // Well-known retailers: when user has NOT entered a ZIP, show these first (then rest by price)
+  const POPULAR_STORE_ORDER = [
+    'Amazon', 'Walmart', 'Target', 'Best Buy', 'Costco', 'Home Depot', 'Lowe\'s',
+    'Kroger', 'CVS', 'Walgreens', 'eBay', 'Newegg', 'B&H Photo', 'Sam\'s Club',
+    'Apple', 'Samsung', 'Google Store', 'Macy\'s', 'Kohl\'s', 'Nordstrom',
+  ];
+  const getPopularStoreIndex = (storeName: string): number => {
+    const lower = (storeName || '').toLowerCase().replace(/\s*\.(com|net|org)$/i, '');
+    for (let i = 0; i < POPULAR_STORE_ORDER.length; i++) {
+      const p = POPULAR_STORE_ORDER[i].toLowerCase();
+      if (lower === p || lower.startsWith(p) || lower.includes(` ${p} `)) return i;
+    }
+    return POPULAR_STORE_ORDER.length;
+  };
 
   // Get unique store names from storePrices
   const availableStores = useMemo(() => {
@@ -155,16 +167,23 @@ export default function ProductComparisonPage({
       console.log(`   Filtered by delivery: ${before} → ${filtered.length}`);
     }
 
-    // Sort by comparison criteria (where to buy it cheapest)
+    // Sort: known brands first, then by price or delivery (ZIP/distance UI removed for now)
     if (sortBy === 'price') {
+      // No ZIP or sort by price: known brands first, then by price
       filtered.sort((a, b) => {
+        const popA = getPopularStoreIndex(a.storeName);
+        const popB = getPopularStoreIndex(b.storeName);
+        if (popA !== popB) return popA - popB;
         const priceA = parseFloat(a.price.replace('$', '')) || 0;
         const priceB = parseFloat(b.price.replace('$', '')) || 0;
         return priceA - priceB;
       });
     } else if (sortBy === 'delivery') {
-      // Delivery Speed (free shipping first, then by price)
+      // Known brands first, then free shipping, then price
       filtered.sort((a, b) => {
+        const popA = getPopularStoreIndex(a.storeName);
+        const popB = getPopularStoreIndex(b.storeName);
+        if (popA !== popB) return popA - popB;
         const aFree = a.shippingInfo?.toLowerCase().includes('free') ? 0 : 1;
         const bFree = b.shippingInfo?.toLowerCase().includes('free') ? 0 : 1;
         if (aFree !== bFree) return aFree - bFree;
@@ -172,10 +191,12 @@ export default function ProductComparisonPage({
         const priceB = parseFloat(b.price.replace('$', '')) || 0;
         return priceA - priceB;
       });
-    } else if (sortBy === 'nearest') {
-      // Nearest Store (would require location data - for now, sort by price as fallback)
-      // TODO: Implement distance calculation when zipCode is provided
+    } else {
+      // nearest (or default): known brands first, then by price
       filtered.sort((a, b) => {
+        const popA = getPopularStoreIndex(a.storeName);
+        const popB = getPopularStoreIndex(b.storeName);
+        if (popA !== popB) return popA - popB;
         const priceA = parseFloat(a.price.replace('$', '')) || 0;
         const priceB = parseFloat(b.price.replace('$', '')) || 0;
         return priceA - priceB;
@@ -228,33 +249,6 @@ export default function ProductComparisonPage({
       setIsExpanded(true);
     }
   };
-
-  // Fetch closest stores when zip code is entered
-  useEffect(() => {
-    const fetchClosestStores = async () => {
-      if (zipCode.trim().length === 5 && /^\d{5}$/.test(zipCode.trim())) {
-        setLoadingClosestStores(true);
-        try {
-          const response = await fetch(API_ENDPOINTS.products.closestStores(productId.toString(), zipCode.trim()));
-          if (response.ok) {
-            const data = await response.json();
-            setClosestStores(data || []);
-          } else {
-            setClosestStores([]);
-          }
-        } catch (error) {
-          console.error('Error fetching closest stores:', error);
-          setClosestStores([]);
-        } finally {
-          setLoadingClosestStores(false);
-        }
-      } else {
-        setClosestStores([]);
-      }
-    };
-
-    fetchClosestStores();
-  }, [zipCode, productId]);
 
   // Calculate insights
   const insights = useMemo(() => {
@@ -375,168 +369,6 @@ export default function ProductComparisonPage({
         }}
         scrollEventThrottle={400}
       >
-        {/* Store Search and ZIP Code Inputs */}
-        <View style={{
-          paddingHorizontal: 16,
-          paddingVertical: 16,
-          gap: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: 'rgba(139, 149, 168, 0.1)',
-        }}>
-          {/* ZIP Code Input - with Enter button to find stores */}
-          <View>
-            <Text style={{
-              color: '#94a3b8',
-              fontSize: 12,
-              marginBottom: 8,
-            }}>
-              Find stores near you
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <TextInput
-                style={{
-                  flex: 1,
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: 'rgba(139, 149, 168, 0.2)',
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  color: '#e8edf4',
-                  fontSize: 14,
-                }}
-                placeholder="Enter ZIP code (e.g., 10001)"
-                placeholderTextColor="#8b95a8"
-                value={zipCode}
-                onChangeText={setZipCode}
-                keyboardType="numeric"
-                maxLength={5}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  if (zipCode.trim().length === 5 && /^\d{5}$/.test(zipCode.trim())) {
-                    // Trigger same effect as useEffect (find stores) - state update already triggers useEffect
-                    return;
-                  }
-                }}
-              />
-              <TouchableOpacity
-                onPress={() => {
-                  if (zipCode.trim().length === 5 && /^\d{5}$/.test(zipCode.trim())) {
-                    // Effect will run when zipCode is set; no-op if already set
-                    setZipCode(zipCode.trim());
-                  }
-                }}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  backgroundColor: '#6366f1',
-                  borderRadius: 8,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Find</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Closest Stores Display */}
-          {loadingClosestStores && (
-            <View style={{
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}>
-              <ActivityIndicator size="small" color="#6366f1" />
-              <Text style={{
-                color: '#8b95a8',
-                fontSize: 12,
-                marginTop: 8,
-              }}>
-                Finding closest stores...
-              </Text>
-            </View>
-          )}
-
-          {!loadingClosestStores && closestStores.length > 0 && (
-            <View style={{
-              marginTop: 8,
-            }}>
-              <Text style={{
-                color: '#e8edf4',
-                fontSize: 14,
-                fontWeight: '600',
-                marginBottom: 12,
-              }}>
-                Closest Stores ({closestStores.length})
-              </Text>
-              <View style={{
-                gap: 8,
-              }}>
-                {closestStores.slice(0, 3).map((store: any, index: number) => {
-                  const matchingPrice = storePrices.find((sp: any) => 
-                    sp.storeName.toLowerCase() === store.storeName?.toLowerCase()
-                  );
-                  
-                  return (
-                    <View
-                      key={`closest-${index}`}
-                      style={{
-                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: 'rgba(99, 102, 241, 0.3)',
-                        padding: 12,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                      }}
-                    >
-                      <View style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 8,
-                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}>
-                        <Ionicons name="location" size={20} color="#6366f1" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{
-                          color: '#e8edf4',
-                          fontSize: 14,
-                          fontWeight: '600',
-                        }}>
-                          {store.storeName || 'Unknown Store'}
-                        </Text>
-                        {store.distance !== undefined && (
-                          <Text style={{
-                            color: '#94a3b8',
-                            fontSize: 12,
-                            marginTop: 2,
-                          }}>
-                            {store.distance.toFixed(1)} miles away
-                          </Text>
-                        )}
-                        {matchingPrice && (
-                          <Text style={{
-                            color: '#10b981',
-                            fontSize: 13,
-                            fontWeight: '600',
-                            marginTop: 4,
-                          }}>
-                            {matchingPrice.price}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-        </View>
-
         {/* Store Controls */}
         <View style={{
           paddingHorizontal: 16,
@@ -778,7 +610,7 @@ export default function ProductComparisonPage({
                   return (
                     <View key={`store-${storePrice.rank}-${index}`} style={{ 
                       width: columnWidth,
-                      minHeight: 220, // Ensure consistent height for all price comparison boxes
+                      height: 220, // Fixed height for all price comparison boxes (was minHeight)
                     }}>
                       <StoreCard
                         rank={storePrice.rank}

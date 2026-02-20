@@ -63,11 +63,31 @@ export const priceDataCache = new PriceDataCache();
  * Compare page can use this when API response has no image (fix: image disappearing).
  */
 const productImageById: Map<string, string> = new Map();
+const productImageByName: Map<string, string> = new Map();
+
+function normalizeNameForCache(name: string): string {
+  return (name || '').toLowerCase().trim();
+}
+
 export function setProductImageForCompare(productId: string, imageUrl: string): void {
   if (productId && imageUrl && imageUrl.startsWith('http')) {
-    productImageById.set(productId, imageUrl);
+    productImageById.set(String(productId), imageUrl);
   }
 }
+
 export function getProductImageForCompare(productId: string): string | undefined {
-  return productId ? productImageById.get(productId) : undefined;
+  return productId ? productImageById.get(String(productId)) : undefined;
+}
+
+/** Cache by product name so compare page can find image when API returns different product id (e.g. SerpAPI id vs DB id). */
+export function setProductImageForCompareByName(productName: string, imageUrl: string): void {
+  const key = normalizeNameForCache(productName);
+  if (key && imageUrl && imageUrl.startsWith('http')) {
+    productImageByName.set(key, imageUrl);
+  }
+}
+
+export function getProductImageForCompareByName(productName: string): string | undefined {
+  const key = normalizeNameForCache(productName);
+  return key ? productImageByName.get(key) : undefined;
 }

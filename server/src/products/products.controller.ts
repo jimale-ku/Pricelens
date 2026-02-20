@@ -153,7 +153,9 @@ export class ProductsController {
     @Query('limit') limit?: number,
     @Query('page') page?: number,
   ) {
-    return this.productsService.fastProductSearch(query, searchType || 'auto', categoryId, limit || 6, categorySlug, page || 1);
+    // Increase default limit for "all-retailers" searches to show more results
+    const defaultLimit = categorySlug === 'all-retailers' ? 12 : 6;
+    return this.productsService.fastProductSearch(query, searchType || 'auto', categoryId, limit || defaultLimit, categorySlug, page || 1);
   }
 
   @Get('compare/multi-store')

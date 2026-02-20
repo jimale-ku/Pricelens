@@ -1,0 +1,24 @@
+=== Store logo URL test ===
+
+1. getStoreLogoUrl() always returns a URL:
+   "Amazon" -> https://logo.clearbit.com/amazon.com ✓
+   "Walmart" -> https://logo.clearbit.com/walmart.com ✓
+   "Target" -> https://logo.clearbit.com/target.com ✓
+   "Best Buy" -> https://logo.clearbit.com/bestbuy.com ✓
+   "Unknown Store" -> https://logo.clearbit.com/unknownstore.com ✓
+   "(empty)" -> https://via.placeholder.com/40?text=? ✓
+
+2. Checking if a few logo URLs are reachable (HEAD request):
+   amazon.com -> HTTP fetch failed
+   walmart.com -> HTTP fetch failed
+   target.com -> HTTP fetch failed
+
+3. API response: stores and logos from backend
+   Failed to fetch /stores: The operation was aborted due to timeout
+   Failed to fetch /compare/multi-store: The operation was aborted due to timeout
+
+=== Summary ===
+Store icons/images are "returned" in the app by:
+  - Backend may send store.logo; if not, we use getStoreLogoUrl(storeName)
+  - getStoreLogoUrl always returns an HTTP URL (map, Clearbit, or placeholder)
+  - StoreCard shows that URL and falls back to store initial if image fails to load

@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ProductComparisonPage from '@/components/ProductComparisonPage';
 import { API_ENDPOINTS, API_BASE_URL } from '@/constants/api';
 import { transformCompareResponse } from '@/utils/apiTransform';
-import { priceDataCache, getProductImageForCompare } from '@/utils/priceDataCache';
+import { priceDataCache, getProductImageForCompare, getProductImageForCompareByName } from '@/utils/priceDataCache';
 
 /**
  * Generate fallback search queries when exact match fails
@@ -987,11 +987,19 @@ export default function ProductCompareScreen() {
     totalStores: storeCount,
   });
 
+  // Resolve product image: API first, then cache by id (card id), then cache by name (works when API returns different id or no image)
+  const resolvedImage =
+    productData.image ||
+    getProductImageForCompare(productData.id) ||
+    getProductImageForCompareByName(productData.name) ||
+    (productName ? getProductImageForCompareByName(productName as string) : '') ||
+    '';
+
   return (
     <ProductComparisonPage
       productId={productData.id}
       productName={productData.name}
-      productImage={productData.image || getProductImageForCompare(productData.id) || ''}
+      productImage={resolvedImage}
       category={productData.category}
       categorySlug={slug || ''}
       storePrices={productData.storePrices || []}

@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { addItemToList, getCurrentList } from '@/utils/listService';
-import { setProductImageForCompare } from '@/utils/priceDataCache';
+import { setProductImageForCompare, setProductImageForCompareByName } from '@/utils/priceDataCache';
 import { toggleFavorite, isFavorite as checkIsFavorite } from '@/utils/favoritesService';
 import type { FavoriteProduct } from '@/utils/favoritesService';
 
@@ -70,9 +70,10 @@ export default function ProductCardSimple({
 
   // Handle "View Prices" button - navigate to comparison page
   const handleViewPrices = () => {
-    // Cache product image so compare page can show it if API doesn't return one
-    if (productId && productImage) {
-      setProductImageForCompare(productId.toString(), productImage);
+    // Cache product image by id and name so compare page can show it if API doesn't return one (some categories omit image)
+    if (productImage && typeof productImage === 'string' && (productImage.startsWith('http://') || productImage.startsWith('https://'))) {
+      if (productId) setProductImageForCompare(productId.toString(), productImage);
+      if (productName) setProductImageForCompareByName(productName, productImage);
     }
     // Navigate to: /category/[categorySlug]/[productSlug]/compare?productId=[id]&productName=[name]
     const params = new URLSearchParams();

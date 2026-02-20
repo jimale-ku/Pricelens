@@ -16,12 +16,23 @@
 
 // For development on physical device or emulator
 // IMPORTANT: Backend runs on port 3000. Expo/Metro uses 8081 – do not use 8081 for API.
+//
+// DEFAULT: Render production backend (safe fallback if .env is missing)
 // To use LOCAL server (faster, no Render cold start): in client/.env set:
-//   EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000   (e.g. http://192.168.1.5:3000)
+//   EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:3000   (e.g. http://192.168.201.105:3000)
 // Then run: cd server && npm run start:dev   and   cd client && npx expo start
+//
+// NOTE: The .env file ALWAYS takes precedence over this default.
+// Your .env file is set to local, so you're using local backend even though default is Render.
 const DEFAULT_API_BASE_URL = 'https://pricelens-1.onrender.com';
 export const API_BASE_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim()) || DEFAULT_API_BASE_URL;
+
+// Debug: Log which backend URL is being used (only in development)
+if (__DEV__) {
+  console.log('🔗 API_BASE_URL:', API_BASE_URL);
+  console.log('🔗 From .env:', process.env?.EXPO_PUBLIC_API_URL || 'NOT SET (using default)');
+}
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -81,6 +92,18 @@ export const API_ENDPOINTS = {
     all: `${API_BASE_URL}/stores`,
     request: `${API_BASE_URL}/stores/request`,
     nearby: (zipCode: string) => `${API_BASE_URL}/store-locations/nearby?zipCode=${zipCode}`,
+    /** Find stores near a ZIP or near (lat, lng). For "Use my location" pass lat/lng; otherwise pass zipCode. */
+    nearbyByNames: (opts: { zipCode?: string; lat?: number; lng?: number; storeNames: string[] }) => {
+      const names = opts.storeNames.length ? opts.storeNames.join(',') : '';
+      const params = new URLSearchParams({ storeNames: names });
+      if (opts.lat != null && opts.lng != null && Number.isFinite(opts.lat) && Number.isFinite(opts.lng)) {
+        params.set('lat', String(opts.lat));
+        params.set('lng', String(opts.lng));
+      } else if (opts.zipCode?.trim()) {
+        params.set('zipCode', opts.zipCode.trim());
+      }
+      return `${API_BASE_URL}/store-locations/nearby-by-names?${params.toString()}`;
+    },
   },
   
   // Auth

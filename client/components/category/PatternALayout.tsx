@@ -11,8 +11,8 @@
  * 3. That's it! All the layout, search, filters, and product cards are handled here
  */
 
-import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Modal, Pressable, Image, ActivityIndicator, Alert, useWindowDimensions, FlatList } from "react-native";
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { ScrollView, View, Text, SafeAreaView, TouchableOpacity, TextInput, Modal, Pressable, Image, ActivityIndicator, Alert, useWindowDimensions, FlatList, KeyboardAvoidingView, Platform } from "react-native";
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
@@ -176,11 +176,22 @@ export default function PatternALayout({
   const [hasSearched, setHasSearched] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // CRITICAL: Sync searchQuery state when initialSearchQuery changes (e.g., from URL params)
+  // This ensures the search input field shows the query when navigating from homepage
+  useEffect(() => {
+    if (initialSearchQuery && initialSearchQuery.trim() && initialSearchQuery !== searchQuery) {
+      console.log('🔄 Syncing searchQuery from initialSearchQuery:', initialSearchQuery);
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
+  
   // Search pagination state (for infinite scroll)
   const [searchPage, setSearchPage] = useState(1);
   const [hasMoreSearchResults, setHasMoreSearchResults] = useState(false);
   const [isLoadingMoreSearch, setIsLoadingMoreSearch] = useState(false);
-  const SEARCH_PAGE_SIZE = 6; // Load 6 items per page
+  // Increased page size for better results, especially for "all-retailers" searches
+  // For "all-retailers", show more results (12 instead of 6) to match client expectations
+  const SEARCH_PAGE_SIZE = categorySlug === 'all-retailers' ? 12 : 6;
   
   // Prefetch cache: stores pages 2-6 in memory for instant loading
   const prefetchedPagesRef = useRef<Map<number, Product[]>>(new Map());
@@ -248,9 +259,18 @@ export default function PatternALayout({
     
     // Reset all state
     setSelectedSubcategory(null);
-    setSearchQuery('');
-    setSearchResults([]);
-    setHasSearched(false);
+    // CRITICAL: Don't clear searchQuery if we have initialSearchQuery (from homepage navigation)
+    // This allows auto-search to work when navigating from homepage with a query
+    if (!initialSearchQuery || !initialSearchQuery.trim()) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setHasSearched(false);
+    } else {
+      // Keep the search query if we have initialSearchQuery, but clear results
+      // Auto-search effect will handle the search
+      setSearchResults([]);
+      setHasSearched(false);
+    }
     prefetchedPagesRef.current.clear(); // Clear prefetch cache on category change
     priceDataCache.clear(); // Clear price data cache on category change
     setSortDropdownVisible(false);
@@ -479,11 +499,18 @@ export default function PatternALayout({
                        error?.message?.includes('aborted') ||
                        error?.constructor?.name === 'AbortError';
       
-      if (!isAborted) {
-        console.error('❌ Error loading more default products:', error);
+      // Check if it's a network error (backend not reachable)
+      const isNetworkError = error?.message?.includes('Network request failed') ||
+                            error?.message?.includes('Failed to fetch');
+      
+      if (isAborted) {
+        // Silently ignore aborted requests - they're expected when switching categories or timing out
+        console.log('ℹ️ Request aborted (category changed or timeout) - ignoring');
+      } else if (isNetworkError) {
+        // Network errors might mean backend is down - log but don't spam
+        console.warn('⚠️ Network error loading more products - backend may be unreachable');
       } else {
-        // Silently ignore aborted requests - they're expected when switching categories
-        console.log('ℹ️ Request aborted (category changed) - ignoring');
+        console.error('❌ Error loading more default products:', error);
       }
       setHasMoreDefaultProducts(false);
     } finally {
@@ -692,10 +719,10 @@ export default function PatternALayout({
     
     try {
       // Use FAST search endpoint - returns products immediately without waiting for all store prices
-      // For 'all-retailers', don't pass categorySlug to search across ALL categories
+      // For 'all-retailers', pass 'all-retailers' explicitly so backend knows to search across ALL categories
       // For other categories, pass categorySlug to filter results
       // For pagination: request only the items for this page (6 items per page)
-      const searchCategorySlug = categorySlug === 'all-retailers' ? undefined : categorySlug;
+      const searchCategorySlug = categorySlug; // Pass categorySlug as-is (backend handles 'all-retailers' specially)
       const searchUrl = API_ENDPOINTS.products.fastSearch(query.trim(), 'auto', undefined, SEARCH_PAGE_SIZE, searchCategorySlug, page);
       
       const controller = new AbortController();
@@ -704,9 +731,14 @@ export default function PatternALayout({
       
       // Backend may call Serper (slow). Render cold start can take 50s+ so use longer timeout when using production.
       const isProductionBackend = typeof API_BASE_URL === 'string' && API_BASE_URL.includes('onrender.com');
+      // Increased timeout for all-retailers searches since they use Serper API which can be slow
+      // For initial searches (page 1), give more time since Serper API might need to fetch results
+      const isAllRetailers = categorySlug === 'all-retailers';
       const timeoutDuration = isProductionBackend
         ? (page > 1 ? 45000 : 70000)  // 45s pagination, 70s initial (cold start)
-        : (page > 1 ? 25000 : 35000); // 25s / 35s for local
+        : isAllRetailers && page === 1
+          ? 60000  // 60s for all-retailers initial search (Serper API can be slow)
+          : (page > 1 ? 30000 : 45000); // 30s pagination, 45s initial for local
       const timeoutId = setTimeout(() => {
         controller.abort();
         abortControllersRef.current.delete(controller);
@@ -763,12 +795,20 @@ export default function PatternALayout({
           storePrices: [], // No store prices in fast search - fetched when user clicks "View Price"
         }))
         .filter((p: any) => {
-          // Filter out products that don't match the current category
-          // Only filter if categorySlug is provided and product has a categorySlug
+          // For 'all-retailers', don't filter - show all products
+          if (categorySlug === 'all-retailers') {
+            return p && p.name && p.id;
+          }
+          
+          // For other categories, filter by categorySlug
+          // Only filter if both categorySlug and product.categorySlug exist
+          // If product has no categorySlug, include it (backend should handle filtering)
           if (categorySlug && p.categorySlug) {
             return p.categorySlug === categorySlug;
           }
+          
           // If no categorySlug on product, include it (backend should handle filtering)
+          // This allows products without categorySlug to show (backend filtered them)
           return p && p.name && p.id;
         });
       
@@ -820,6 +860,27 @@ export default function PatternALayout({
       
       setHasSearched(true);
     } catch (error: any) {
+      // CRITICAL: Check if query was cleared before handling error
+      // If query was cleared, silently ignore the error (user cancelled the search)
+      const currentQuery = searchQuery.trim();
+      const wasQueryCleared = !currentQuery || currentQuery !== query.trim();
+      
+      // Check if this is an AbortError (timeout or cancellation)
+      const isAbortError = error?.name === 'AbortError' || 
+                          error?.message?.includes('Aborted') ||
+                          error?.message?.includes('aborted');
+      
+      // If query was cleared OR it's an AbortError, silently ignore
+      if (wasQueryCleared || isAbortError) {
+        if (wasQueryCleared) {
+          console.log(`⏭️ Search was cancelled (query cleared), ignoring error`);
+        } else {
+          console.log(`⏭️ Search request was aborted (timeout or cancellation), ignoring`);
+        }
+        return; // Silently return - don't show error, don't try fallback, don't update state
+      }
+      
+      // Only log non-abort errors
       console.error('❌ Search error:', error);
       
       const isNetworkError = 
@@ -829,6 +890,13 @@ export default function PatternALayout({
         error.name === 'AbortError';
       
       if (isNetworkError) {
+        // Double-check query wasn't cleared before trying fallback
+        const queryStillValid = searchQuery.trim() && searchQuery.trim() === query.trim();
+        if (!queryStillValid) {
+          console.log(`⏭️ Query was cleared during network error, skipping fallback`);
+          return;
+        }
+        
         console.log('⚠️ Network error, trying database search fallback...');
         try {
           const fallbackUrl = `${API_ENDPOINTS.products.search}?q=${encodeURIComponent(query.trim())}`;
@@ -845,6 +913,13 @@ export default function PatternALayout({
           
           clearTimeout(fallbackTimeout);
           
+          // Check again if query was cleared during fallback
+          const queryStillValidAfterFallback = searchQuery.trim() && searchQuery.trim() === query.trim();
+          if (!queryStillValidAfterFallback) {
+            console.log(`⏭️ Query was cleared during fallback, ignoring results`);
+            return;
+          }
+          
           if (fallbackResponse.ok) {
             const fallbackData = await fallbackResponse.json();
             const transformedProducts = transformProducts(Array.isArray(fallbackData) ? fallbackData : []);
@@ -856,41 +931,66 @@ export default function PatternALayout({
               return;
             }
           }
-        } catch (fallbackError) {
+        } catch (fallbackError: any) {
+          // Check if fallback error was due to query being cleared
+          const queryStillValid = searchQuery.trim() && searchQuery.trim() === query.trim();
+          if (!queryStillValid || fallbackError.name === 'AbortError') {
+            console.log(`⏭️ Fallback search cancelled (query cleared or aborted)`);
+            return;
+          }
           console.error('❌ Fallback search also failed:', fallbackError);
         }
         
-        const serverUrl = API_ENDPOINTS.products.compareMultiStore(query.trim(), 'auto').split('?')[0];
-        Alert.alert(
-          'Connection Error',
-          `Cannot connect to server:\n${serverUrl}\n\nTroubleshooting:\n1. Is backend server running?\n2. Check IP address\n3. Same WiFi network?\n4. Firewall blocking?`,
-          [{ text: 'OK' }]
-        );
+        // Only show error if query wasn't cleared
+        if (!wasQueryCleared) {
+          const serverUrl = API_ENDPOINTS.products.compareMultiStore(query.trim(), 'auto').split('?')[0];
+          Alert.alert(
+            'Connection Error',
+            `Cannot connect to server:\n${serverUrl}\n\nTroubleshooting:\n1. Is backend server running?\n2. Check IP address\n3. Same WiFi network?\n4. Firewall blocking?`,
+            [{ text: 'OK' }]
+          );
+        }
       } else {
-        if (error.name === 'AbortError') {
-          Alert.alert(
-            'Taking Longer Than Usual',
-            'The server may be starting up. Please try again in a moment.',
-            [{ text: 'OK' }]
-          );
-        } else if (error.status >= 500 && error.status < 600) {
-          Alert.alert(
-            'Server Temporarily Unavailable',
-            'Something went wrong on our end. Please try again in a moment.',
-            [{ text: 'OK' }]
-          );
-        } else if (error.name !== 'AbortError') {
-          Alert.alert(
-            'Search Error',
-            error.message || 'Failed to search products. Please try again.',
-            [{ text: 'OK' }]
-          );
+        // Only show error alerts if query wasn't cleared
+        if (!wasQueryCleared) {
+          if (error.name === 'AbortError') {
+            // Check if using local backend for better error message
+            const isLocalBackend = typeof API_BASE_URL === 'string' && 
+                                   (API_BASE_URL.includes('localhost') || 
+                                    API_BASE_URL.includes('192.168') || 
+                                    API_BASE_URL.includes('127.0.0.1'));
+            
+            if (isLocalBackend) {
+              Alert.alert(
+                'Search Timeout',
+                `The search took too long to respond.\n\nPossible causes:\n• Backend server not running\n• Backend is slow or stuck\n\nTry:\n1. Check if backend is running: cd server && npm run start:dev\n2. Wait a moment and try again\n3. Check backend terminal for errors`,
+                [{ text: 'OK' }]
+              );
+            } else {
+              Alert.alert(
+                'Taking Longer Than Usual',
+                'The server may be starting up (cold start can take 30-60 seconds). Please try again in a moment.',
+                [{ text: 'OK' }]
+              );
+            }
+          } else if (error.status >= 500 && error.status < 600) {
+            Alert.alert(
+              'Server Temporarily Unavailable',
+              'Something went wrong on our end. Please try again in a moment.',
+              [{ text: 'OK' }]
+            );
+          } else if (error.name !== 'AbortError') {
+            Alert.alert(
+              'Search Error',
+              error.message || 'Failed to search products. Please try again.',
+              [{ text: 'OK' }]
+            );
+          }
         }
       }
       
       // CRITICAL: Only update state if query hasn't been cleared
-      const currentQuery = searchQuery.trim();
-      if (currentQuery && currentQuery === query.trim()) {
+      if (!wasQueryCleared && currentQuery && currentQuery === query.trim()) {
         setSearchResults([]);
         setHasSearched(true); // Mark as searched even on error so we show "no results" message
         setHasMoreSearchResults(false);
@@ -931,24 +1031,46 @@ export default function PatternALayout({
     }
   };
   
+  // Track if we've already auto-searched to prevent duplicate searches
+  const hasAutoSearchedRef = useRef(false);
+  
   // Auto-search when initialSearchQuery is provided (from homepage)
+  // CRITICAL: Watch for initialSearchQuery changes (e.g., when navigating from homepage with query)
   useEffect(() => {
-    if (initialSearchQuery && initialSearchQuery.trim()) {
+    // Reset auto-search flag when category changes
+    if (categorySlug) {
+      hasAutoSearchedRef.current = false;
+    }
+    
+    if (initialSearchQuery && initialSearchQuery.trim() && !hasAutoSearchedRef.current) {
       console.log('🔍 Auto-searching with initial query:', initialSearchQuery);
-      // Immediately perform search without debounce
+      hasAutoSearchedRef.current = true; // Mark that we've auto-searched
+      
+      // Update search query state to show in input field
       setSearchQuery(initialSearchQuery);
       setSearchPage(1);
       setHasMoreSearchResults(false);
-      performSearch(initialSearchQuery, 1);
+      setHasSearched(true); // Mark that we've searched so results will show
+      
+      // Immediately perform search without debounce
+      // Use setTimeout to ensure component is fully mounted and performSearch is available
+      const timeoutId = setTimeout(() => {
+        // Call performSearch directly - it's defined in the component scope
+        performSearch(initialSearchQuery.trim(), 1, false);
+      }, 200); // Small delay to ensure component is ready and performSearch is available
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, []); // Only run once on mount
+  }, [initialSearchQuery, categorySlug]); // Run when initialSearchQuery or category changes
 
   // Improved debounced search - waits for complete word before searching
   useEffect(() => {
     console.log('🔍 Search useEffect triggered, searchQuery:', searchQuery);
     
-    // Skip debounce if this is the initial search query (already handled above)
-    if (initialSearchQuery && searchQuery === initialSearchQuery) {
+    // Skip debounce if this is the initial search query (already handled by auto-search useEffect above)
+    // This prevents duplicate searches when navigating from homepage with a query
+    if (initialSearchQuery && searchQuery === initialSearchQuery && searchQuery.trim().length > 0) {
+      console.log('🔍 Skipping debounced search - this is the initial query from homepage');
       return;
     }
     
@@ -958,11 +1080,21 @@ export default function PatternALayout({
     
     if (!searchQuery.trim()) {
       console.log('🔍 Search query is empty, clearing results');
+      // CRITICAL: Abort all ongoing search requests to prevent AbortError
+      abortControllersRef.current.forEach(controller => {
+        try {
+          controller.abort();
+        } catch (e) {
+          // Ignore errors when aborting
+        }
+      });
+      abortControllersRef.current.clear();
       setSearchResults([]);
       setHasSearched(false); // CRITICAL: Reset hasSearched so default products are shown
-      setHasSearched(false);
       setSearchPage(1);
       setHasMoreSearchResults(false);
+      setIsSearching(false);
+      setIsLoadingMoreSearch(false);
       return;
     }
     
@@ -1222,40 +1354,56 @@ export default function PatternALayout({
   }), []);
   
   const scrollViewRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
   
   // Reset scroll position when category changes
   useEffect(() => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
   }, [categorySlug]);
   
+  // Scroll to search input when keyboard appears
+  const handleSearchFocus = () => {
+    // Scroll to top of search section when input is focused
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 200, animated: true });
+    }, 300);
+  };
+  
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
-      {/* Background Image (if provided) */}
-      {backgroundImage && (
-        <Image
-          source={{ uri: backgroundImage }}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100%',
-            height: '100%',
-            opacity: 0.15, // Subtle background
-          }}
-          resizeMode="cover"
-        />
-      )}
-      <AppHeader />
-      <CurrentCategoryBar categoryName={categoryName} />
-      <ScrollView 
-        ref={scrollViewRef}
+      <KeyboardAvoidingView 
         style={{ flex: 1 }} 
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews={true} // Enable clipping for performance
-        bounces={false}
-        scrollEventThrottle={16}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        {/* Background Image (if provided) */}
+        {backgroundImage && (
+          <Image
+            source={{ uri: backgroundImage }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0.15, // Subtle background
+            }}
+            resizeMode="cover"
+          />
+        )}
+        <AppHeader />
+        <CurrentCategoryBar categoryName={categoryName} />
+        <ScrollView 
+          ref={scrollViewRef}
+          style={{ flex: 1 }} 
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={true} // Enable clipping for performance
+          bounces={false}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         onScroll={({ nativeEvent }) => {
           // Infinite scroll: Load more when near bottom (TikTok-style)
           if (selectedSubcategory && hasMoreProducts && !isLoadingMore) {
@@ -1605,6 +1753,7 @@ export default function PatternALayout({
               }}>
                 <Ionicons name="search" size={18} color="#8b95a8" style={{ marginRight: 8 }} />
                 <TextInput
+                  ref={searchInputRef}
                   placeholder={
                     categorySlug === 'clothing' || categorySlug === 'clothes'
                       ? "Search clothing by brand, category"
@@ -1616,6 +1765,7 @@ export default function PatternALayout({
                     console.log('🔍 TextInput onChangeText:', text);
                     setSearchQuery(text);
                   }}
+                  onFocus={handleSearchFocus}
                   onSubmitEditing={() => {
                     console.log('🔍 TextInput onSubmitEditing, triggering search now');
                     if (searchQuery.trim()) {
@@ -2345,6 +2495,7 @@ export default function PatternALayout({
           <CategoryAdCard categorySlug={categorySlug} />
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
       <BottomNav />
     </SafeAreaView>
   );

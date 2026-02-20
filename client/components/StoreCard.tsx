@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
@@ -11,6 +12,8 @@ interface StoreCardProps {
   isBestDeal?: boolean;
   priceDifference?: string; // e.g., "+$0.04 more"
   productUrl?: string; // URL to the product on the store's website
+  /** Distance in miles from user's ZIP (when "Find stores near you" is used) */
+  distanceMiles?: number | null;
   // Product info for purchase tracking
   productId?: string | number;
   productName?: string;
@@ -26,12 +29,33 @@ export default function StoreCard({
   isBestDeal = false,
   priceDifference,
   productUrl,
+  distanceMiles,
   productId,
   productName,
   productImage,
   category,
 }: StoreCardProps) {
-  
+  const [logoError, setLogoError] = useState(false);
+
+  const renderStoreLogo = (containerStyle: object) => {
+    if (logoError || !storeImage) {
+      const initial = (storeName || '?').charAt(0).toUpperCase();
+      return (
+        <View style={[containerStyle, { backgroundColor: 'rgba(30, 39, 54, 0.8)' }]}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#8b95a8' }}>{initial}</Text>
+        </View>
+      );
+    }
+    return (
+      <Image
+        source={{ uri: storeImage }}
+        style={{ width: 40, height: 40 }}
+        resizeMode="contain"
+        onError={() => setLogoError(true)}
+      />
+    );
+  };
+
   // Handle Shop Now button press
   const handleShopNow = async () => {
     console.log(`🛒 Shop Now clicked for ${storeName}:`, {
@@ -118,12 +142,18 @@ export default function StoreCard({
         overflow: 'hidden',
         marginBottom: 12,
         width: '100%',
+        height: '100%', // Fill parent container (220px)
       }}>
         <LinearGradient
           colors={['#ecfeff', '#eff6ff']} // cyan-50 to blue-50
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ padding: 16 }}
+          style={{ 
+            padding: 16,
+            minHeight: 200, // Minimum height to ensure button fits
+            flexDirection: 'column',
+            justifyContent: 'space-between', // Distribute content evenly
+          }}
         >
           {/* Header Row - Rank and Best Price Badge */}
           <View style={{
@@ -184,14 +214,7 @@ export default function StoreCard({
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <Image
-                source={{ uri: storeImage }}
-                style={{
-                  width: 40,
-                  height: 40,
-                }}
-                resizeMode="contain"
-              />
+              {renderStoreLogo({ width: 40, height: 40 })}
             </View>
 
             {/* Store Name */}
@@ -212,12 +235,12 @@ export default function StoreCard({
             fontSize: 28,
             fontWeight: '700',
             color: '#10b981', // green-500
-            marginBottom: 16,
+            marginBottom: 12,
           }}>
             {price}
           </Text>
 
-          {/* Shop Now Button */}
+          {/* Shop Now Button - Always at bottom */}
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={handleShopNow}
@@ -225,6 +248,7 @@ export default function StoreCard({
               width: '100%',
               borderRadius: 8,
               overflow: 'hidden',
+              marginTop: 'auto', // Push button to bottom
             }}
           >
             <LinearGradient
@@ -268,6 +292,9 @@ export default function StoreCard({
       backgroundColor: 'rgba(21, 27, 40, 0.6)', // Dark background
       marginBottom: 12,
       width: '100%',
+      minHeight: 200, // Minimum height to ensure button fits
+      flexDirection: 'column',
+      justifyContent: 'space-between', // Distribute content evenly
     }}>
       {/* Header Row - Rank Only */}
       <View style={{
@@ -312,26 +339,27 @@ export default function StoreCard({
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-          <Image
-            source={{ uri: storeImage }}
-            style={{
-              width: 40,
-              height: 40,
-            }}
-            resizeMode="contain"
-          />
+          {renderStoreLogo({ width: 40, height: 40 })}
         </View>
 
-        {/* Store Name */}
+        {/* Store Name + distance when ZIP was used */}
         <View style={{ flex: 1 }}>
           <Text style={{
             fontSize: 16,
             fontWeight: '600',
             color: '#e8edf4',
-            marginBottom: 4,
+            marginBottom: 2,
           }}>
             {storeName}
           </Text>
+          {distanceMiles != null && Number.isFinite(distanceMiles) && (
+            <Text style={{
+              fontSize: 12,
+              color: '#94a3b8',
+            }}>
+              {distanceMiles.toFixed(1)} mi away
+            </Text>
+          )}
         </View>
       </View>
 
@@ -345,19 +373,20 @@ export default function StoreCard({
         {price}
       </Text>
 
-      {/* Price Difference - Red text */}
-      {priceDifference && (
-        <Text style={{
-          fontSize: 14,
-          fontWeight: '500',
-          color: '#ef4444', // red-500
-          marginBottom: 16,
-        }}>
-          {priceDifference}
-        </Text>
-      )}
+      {/* Price Difference - Red text (fixed height to prevent size differences) */}
+      <View style={{ height: 20, marginBottom: 12, justifyContent: 'flex-start' }}>
+        {priceDifference && (
+          <Text style={{
+            fontSize: 14,
+            fontWeight: '500',
+            color: '#ef4444', // red-500
+          }}>
+            {priceDifference}
+          </Text>
+        )}
+      </View>
 
-      {/* Shop Now Button */}
+      {/* Shop Now Button - Always at bottom */}
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={handleShopNow}
@@ -365,6 +394,7 @@ export default function StoreCard({
           width: '100%',
           borderRadius: 8,
           overflow: 'hidden',
+          marginTop: 'auto', // Push button to bottom
         }}
       >
         <LinearGradient

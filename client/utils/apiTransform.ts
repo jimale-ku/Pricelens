@@ -2,6 +2,8 @@
  * Utility functions to transform backend API responses to frontend format
  */
 
+import { getStoreLogoUrl, getCategoryPlaceholderImage } from '@/constants/storeLogos';
+
 interface BackendPrice {
   id: string;
   price: number;
@@ -123,9 +125,9 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
     productImage = backendProduct.image.trim();
   }
   
-  // Use placeholder if no image found (don't filter out product)
+  // Use category-based placeholder if no image (e.g. groceries popular items)
   if (!productImage) {
-    productImage = 'https://via.placeholder.com/200x200/1e2736/8b95a8?text=No+Image';
+    productImage = getCategoryPlaceholderImage(backendProduct.category?.slug);
   }
   
   // Handle missing prices array
@@ -174,9 +176,7 @@ export function transformProduct(backendProduct: BackendProduct): FrontendProduc
     
     // Use store logo if available, otherwise use Clearbit Logo API
     const storeName = price.store?.name || 'Unknown Store';
-    const storeImage = price.store?.logo || 
-      `https://logo.clearbit.com/${storeName.toLowerCase().replace(/\s+/g, '').replace(/&/g, 'and')}.com` ||
-      'https://via.placeholder.com/40';
+    const storeImage = getStoreLogoUrl(storeName, price.store?.logo);
     
     // Calculate price difference for non-best-deal stores
     let priceDifference: string | undefined;
@@ -257,11 +257,8 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
     // price.price is guaranteed to be a valid number due to filter above
     const formattedPrice = `$${price.price.toFixed(2)}`;
     
-    // Use store logo if available, otherwise generate from store name using Clearbit
     const storeName = price.store.name || 'Unknown Store';
-    const storeImage = price.store.logo || 
-      `https://logo.clearbit.com/${storeName.toLowerCase().replace(/\s+/g, '').replace(/&/g, 'and').replace(/[^a-z0-9]/g, '')}.com` ||
-      'https://via.placeholder.com/40';
+    const storeImage = getStoreLogoUrl(storeName, price.store.logo);
     
     // Determine shipping info from shippingCost or totalPrice
     let shippingInfo = 'Free Shipping';
@@ -374,10 +371,13 @@ export function transformCompareResponse(response: CompareMultiStoreResponse): F
     productImage = null;
   }
   
-  // Use placeholder if no valid image
   if (!productImage) {
-    productImage = 'https://via.placeholder.com/96x96/1e2736/8b95a8?text=No+Image';
-    console.log('⚠️ Using placeholder image');
+    productImage = getCategoryPlaceholderImage(
+      typeof product.category === 'object' && product.category?.slug
+        ? product.category.slug
+        : undefined
+    );
+    console.log('⚠️ Using category placeholder image');
   }
   
   console.log('🖼️ transformCompareResponse - Final productImage:', productImage);

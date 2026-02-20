@@ -2520,12 +2520,13 @@ export class ProductsService {
     }
     
     // Use category.id for database queries if we found a category
-    const finalCategoryId = category?.id;
+    // CRITICAL: For "all-retailers", don't filter by category - search across ALL categories
+    const finalCategoryId = category && category.slug !== 'all-retailers' ? category.id : undefined;
     
     const products: any[] = [];
     
     // CRITICAL: Check database FIRST - only use SerpAPI if database doesn't have the item
-    // Search database for products FIRST (filtered by category if found)
+    // Search database for products FIRST (filtered by category if found, but NOT for all-retailers)
     // Note: Hierarchical ordering will be applied after fetching
     // Fetch enough results to support pagination (fetch more than needed for proper sorting)
     const dbProducts = await this.prisma.product.findMany({
@@ -2739,6 +2740,8 @@ export class ProductsService {
    * Generic search → Models (newest first)
    * Model search → Variants
    * Specific search → Specs/colors
+   * 
+   * Also applies brand prioritization for all categories with well-known brands
    */
   private applyHierarchicalOrdering(
     products: any[],
@@ -2752,18 +2755,19 @@ export class ProductsService {
       return this.orderIphoneResults(products, lowerQuery);
     }
     
-    // For "all-retailers" or electronics, prioritize popular brands for headphones
-    if ((categorySlug === 'all-retailers' || categorySlug === 'electronics') && 
-        (lowerQuery.includes('headphone') || lowerQuery.includes('earbud') || lowerQuery.includes('earphone'))) {
-      return this.orderHeadphonesByPopularBrands(products, lowerQuery);
-    }
-    
     // For groceries "apple" search: prioritize classic apples (Gala, Honeycrisp, etc.) from major retailers
     if (categorySlug === 'groceries' && (lowerQuery === 'apple' || lowerQuery.includes('apple'))) {
       return this.orderGroceriesAppleResults(products);
     }
     
-    // For other categories, maintain current order (already sorted by relevance)
+    // Apply general brand prioritization for all categories with well-known brands
+    // This ensures popular brands show first for any branded items (laptops, phones, TVs, headphones, etc.)
+    // Works for both specific categories (electronics, clothing, kitchen) and "all-retailers"
+    if (categorySlug) {
+      return this.orderByPopularBrands(products, categorySlug, lowerQuery);
+    }
+    
+    // For other cases without category, maintain current order (already sorted by relevance)
     return products;
   }
   
@@ -2801,36 +2805,43 @@ export class ProductsService {
   }
   
   /**
-   * Order headphones by popular brands (Apple, Bose, Sony, etc.) - like Google search
+   * General brand prioritization for all categories
+   * Returns products ordered by popular brands for the given category
    */
-  private orderHeadphonesByPopularBrands(products: any[], query: string): any[] {
-    // Popular brands in order of priority (most popular first)
-    const popularBrands = [
-      'apple', 'airpods', 'beats', // Apple ecosystem
-      'bose', 'quietcomfort', 'qc', // Bose
-      'sony', 'wh-1000', 'wf-1000', 'xm', // Sony
-      'sennheiser', 'momentum', // Sennheiser
-      'jbl', // JBL
-      'samsung', 'galaxy buds', // Samsung
-      'jabra', // Jabra
-      'anker', 'soundcore', // Anker
-      'skullcandy', // Skullcandy
-      'audio-technica', 'ath-', // Audio-Technica
-    ];
+  private orderByPopularBrands(products: any[], categorySlug: string, query: string): any[] {
+    // Get popular brands for this category
+    const popularBrands = this.getPopularBrandsForCategory(categorySlug, query);
+    
+    if (!popularBrands || popularBrands.length === 0) {
+      return products; // No brand prioritization for this category
+    }
     
     return products.sort((a, b) => {
       const aName = (a.name || '').toLowerCase();
       const bName = (b.name || '').toLowerCase();
       
-      // Find brand priority for each product
+      // Find brand priority for each product (lower number = higher priority)
       let aPriority = Infinity;
       let bPriority = Infinity;
       
+      // Check if product name contains any popular brand
       for (let i = 0; i < popularBrands.length; i++) {
-        if (aName.includes(popularBrands[i]) && aPriority === Infinity) {
+        const brand = popularBrands[i].toLowerCase();
+        // Match brand at start of name or after space/dash (more accurate)
+        const brandPattern = new RegExp(`(^|\\s|-)${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+        
+        if (brandPattern.test(aName) && aPriority === Infinity) {
           aPriority = i;
         }
-        if (bName.includes(popularBrands[i]) && bPriority === Infinity) {
+        if (brandPattern.test(bName) && bPriority === Infinity) {
+          bPriority = i;
+        }
+        
+        // Fallback: simple includes check (for products like "Apple iPhone 15")
+        if (aPriority === Infinity && aName.includes(brand)) {
+          aPriority = i;
+        }
+        if (bPriority === Infinity && bName.includes(brand)) {
           bPriority = i;
         }
       }
@@ -2842,9 +2853,112 @@ export class ProductsService {
         return aPriority - bPriority;
       }
       
-      // If neither has a popular brand, maintain original order
+      // If neither has a popular brand, maintain original order (relevance/score)
       return 0;
     });
+  }
+  
+  /**
+   * Get popular brands for a category based on query context
+   * Returns array of brand names in priority order (most popular first)
+   */
+  private getPopularBrandsForCategory(categorySlug: string, query: string): string[] {
+    const lowerQuery = query.toLowerCase();
+    
+    // Electronics category - brand prioritization by product type
+    if (categorySlug === 'electronics' || categorySlug === 'all-retailers') {
+      // Laptops
+      if (lowerQuery.includes('laptop') || lowerQuery.includes('computer') || lowerQuery.includes('notebook') || lowerQuery.includes('macbook')) {
+        return ['Apple', 'MacBook', 'Dell', 'HP', 'Lenovo', 'ASUS', 'Acer', 'Microsoft', 'Surface', 'MSI', 'Razer'];
+      }
+      
+      // Smartphones
+      if (lowerQuery.includes('phone') || lowerQuery.includes('smartphone') || lowerQuery.includes('iphone') || lowerQuery.includes('galaxy')) {
+        return ['Apple', 'iPhone', 'Samsung', 'Galaxy', 'Google', 'Pixel', 'OnePlus', 'Xiaomi', 'Motorola', 'Nokia'];
+      }
+      
+      // Tablets
+      if (lowerQuery.includes('tablet') || lowerQuery.includes('ipad')) {
+        return ['Apple', 'iPad', 'Samsung', 'Galaxy Tab', 'Microsoft', 'Surface', 'Amazon', 'Fire', 'Lenovo'];
+      }
+      
+      // TVs
+      if (lowerQuery.includes('tv') || lowerQuery.includes('television') || lowerQuery.includes('smart tv')) {
+        return ['Samsung', 'LG', 'Sony', 'TCL', 'Vizio', 'Hisense', 'Roku', 'Amazon', 'Fire TV'];
+      }
+      
+      // Headphones/Earbuds
+      if (lowerQuery.includes('headphone') || lowerQuery.includes('earbud') || lowerQuery.includes('earphone')) {
+        return ['Apple', 'AirPods', 'Beats', 'Bose', 'QuietComfort', 'QC', 'Sony', 'WH-1000', 'WF-1000', 'XM', 'Sennheiser', 'Momentum', 'JBL', 'Samsung', 'Galaxy Buds', 'Jabra', 'Anker', 'Soundcore', 'Skullcandy', 'Audio-Technica', 'ATH-'];
+      }
+      
+      // Smartwatches
+      if (lowerQuery.includes('watch') || lowerQuery.includes('smartwatch') || lowerQuery.includes('fitness tracker')) {
+        return ['Apple', 'Apple Watch', 'Samsung', 'Galaxy Watch', 'Fitbit', 'Garmin', 'Amazfit', 'Xiaomi', 'Huawei'];
+      }
+      
+      // Monitors
+      if (lowerQuery.includes('monitor') || lowerQuery.includes('display')) {
+        return ['Dell', 'LG', 'Samsung', 'ASUS', 'Acer', 'HP', 'BenQ', 'ViewSonic', 'AOC'];
+      }
+      
+      // Cameras
+      if (lowerQuery.includes('camera') || lowerQuery.includes('dslr') || lowerQuery.includes('mirrorless')) {
+        return ['Canon', 'Nikon', 'Sony', 'Fujifilm', 'Panasonic', 'Olympus', 'GoPro'];
+      }
+      
+      // Gaming consoles
+      if (lowerQuery.includes('console') || lowerQuery.includes('playstation') || lowerQuery.includes('xbox') || lowerQuery.includes('nintendo')) {
+        return ['Sony', 'PlayStation', 'Microsoft', 'Xbox', 'Nintendo', 'Switch'];
+      }
+      
+      // General electronics (if no specific product type detected)
+      return ['Apple', 'Samsung', 'Sony', 'LG', 'Microsoft', 'Dell', 'HP', 'Lenovo', 'ASUS', 'Google'];
+    }
+    
+    // Clothing category
+    if (categorySlug === 'clothing') {
+      return ['Nike', 'Adidas', 'Under Armour', 'Puma', 'Levi\'s', 'Calvin Klein', 'Tommy Hilfiger', 'Ralph Lauren', 'Gap', 'Old Navy', 'H&M', 'Zara'];
+    }
+    
+    // Kitchen category
+    if (categorySlug === 'kitchen') {
+      return ['KitchenAid', 'Cuisinart', 'Instant Pot', 'Ninja', 'Breville', 'Vitamix', 'Keurig', 'Hamilton Beach', 'Black+Decker', 'Oster'];
+    }
+    
+    // Home Accessories
+    if (categorySlug === 'home-accessories') {
+      return ['IKEA', 'Home Depot', 'Lowe\'s', 'Target', 'Wayfair', 'Amazon Basics', 'Simplehuman', 'OXO', 'Rubbermaid'];
+    }
+    
+    // Medicine & Health
+    if (categorySlug === 'medicine-health') {
+      return ['Johnson & Johnson', 'Tylenol', 'Advil', 'Aleve', 'Bayer', 'CVS', 'Walgreens', 'Nature Made', 'Centrum'];
+    }
+    
+    // Books
+    if (categorySlug === 'books') {
+      // For books, prioritize major publishers and popular authors
+      return ['Penguin', 'Random House', 'HarperCollins', 'Simon & Schuster', 'Macmillan'];
+    }
+    
+    // For "all-retailers" without specific product type, return general popular brands
+    if (categorySlug === 'all-retailers') {
+      return ['Apple', 'Samsung', 'Sony', 'Nike', 'LG', 'Microsoft', 'Dell', 'HP'];
+    }
+    
+    // No brand prioritization for other categories
+    return [];
+  }
+  
+  /**
+   * Order headphones by popular brands (Apple, Bose, Sony, etc.) - like Google search
+   * @deprecated Use orderByPopularBrands instead - kept for backward compatibility
+   * This now delegates to the general brand ordering system
+   */
+  private orderHeadphonesByPopularBrands(products: any[], query: string): any[] {
+    // Use the general brand ordering system for headphones
+    return this.orderByPopularBrands(products, 'electronics', query);
   }
   
   /**
