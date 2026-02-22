@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pricelens_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./server
+        run: npm ci --legacy-peer-deps
+
+      - name: Run linter
+        working-directory: ./server
+        run: npm run lint
+
+      - name: Generate Prisma Client
+        working-directory: ./server
+        run: npx prisma generate
+
+      - name: Run database migrations
+        working-directory: ./server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pricelens_test
+        run: npx prisma migrate deploy
+
+      - name: Run unit tests
+        working-directory: ./server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pricelens_test
+          JWT_SECRET: test-jwt-secret
+          JWT_REFRESH_SECRET: test-jwt-refresh-secret
+          GOOGLE_CLIENT_ID: test-google-client-id
+          GOOGLE_CLIENT_SECRET: test-google-client-secret
+          GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
+        run: npm run test
+
+      - name: Run e2e tests
+        working-directory: ./server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pricelens_test
+          JWT_SECRET: test-jwt-secret
+          JWT_REFRESH_SECRET: test-jwt-refresh-secret
+          GOOGLE_CLIENT_ID: test-google-client-id
+          GOOGLE_CLIENT_SECRET: test-google-client-secret
+          GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
+        run: npm run test:e2e
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: server/coverage
+          retention-days: 7
