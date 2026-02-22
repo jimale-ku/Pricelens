@@ -2,6 +2,8 @@
 FROM node:20-alpine AS base
 WORKDIR /usr/src/app
 COPY package*.json ./
+# Suppress npm deprecation warnings so CI (e.g. Render) doesn't treat them as failures
+ENV npm_config_loglevel=error
 RUN npm install --legacy-peer-deps
 COPY . .
 
