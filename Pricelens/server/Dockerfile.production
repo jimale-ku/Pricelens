@@ -13,8 +13,8 @@ COPY prisma ./prisma/
 # Suppress npm deprecation warnings so CI (e.g. Render) doesn't treat them as failures
 ENV npm_config_loglevel=error
 
-# Install dependencies (production only)
-RUN npm ci --legacy-peer-deps --only=production && \
+# Install dependencies (production only); skip postinstall (Windows-only patch, scripts/ not copied yet)
+RUN npm ci --legacy-peer-deps --only=production --ignore-scripts && \
     npm cache clean --force
 
 # Generate Prisma Client

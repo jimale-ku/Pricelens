@@ -4,7 +4,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 # Suppress npm deprecation warnings so CI (e.g. Render) doesn't treat them as failures
 ENV npm_config_loglevel=error
-RUN npm install --legacy-peer-deps
+# Skip postinstall (patch-nest-treekill.js) - only needed on Windows; scripts/ not copied yet
+RUN npm install --legacy-peer-deps --ignore-scripts
 COPY . .
 
 FROM base AS dev
