@@ -26,7 +26,9 @@ RUN npx prisma generate && npm run build
 # Production stage
 FROM node:20-alpine AS production
 
-RUN apk add --no-cache openssl
+# openssl for Prisma; build deps for bcrypt native module (removed after install)
+RUN apk add --no-cache openssl && \
+    apk add --no-cache --virtual .build-deps python3 make g++
 
 WORKDIR /usr/src/app
 
@@ -36,8 +38,9 @@ COPY --from=base /usr/src/app/package-lock.json ./
 COPY --from=base /usr/src/app/dist ./dist
 COPY --from=base /usr/src/app/prisma ./prisma
 
-# Production deps only (smaller image)
-RUN npm ci --legacy-peer-deps --only=production --ignore-scripts && npm cache clean --force
+# Production deps; allow scripts so bcrypt can compile its native binding, then remove build deps
+RUN npm ci --legacy-peer-deps --only=production && npm cache clean --force && \
+    apk del .build-deps
 RUN npx prisma generate
 
 # Create non-root user
