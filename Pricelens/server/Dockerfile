@@ -38,6 +38,8 @@ COPY --from=base /usr/src/app/package-lock.json ./
 COPY --from=base /usr/src/app/dist ./dist
 COPY --from=base /usr/src/app/prisma ./prisma
 
+# Copy scripts so postinstall (patch-nest-treekill.js) can run; script no-ops on Linux, needed so npm ci doesn't fail
+COPY --from=base /usr/src/app/scripts ./scripts
 # Production deps; allow scripts so bcrypt can compile its native binding, then remove build deps
 RUN npm ci --legacy-peer-deps --only=production && npm cache clean --force && \
     apk del .build-deps
