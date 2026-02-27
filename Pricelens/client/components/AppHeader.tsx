@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_LIST } from "@/constants/categories";
 import { getIconName } from "@/utils/iconMapper";
 import { theme } from "@/constants/theme";
+import { useSubscription } from "@/hooks/useSubscription";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -19,7 +20,7 @@ export default function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const scrollViewRef = useRef<ScrollView>(null);
-  const [isPlusSubscriber, setIsPlusSubscriber] = useState(true);
+  const { isPremium } = useSubscription();
   const [tabPositions, setTabPositions] = useState<{ [key: string]: number }>({});
   // Default to first category (All Retailers) instead of 'search'
   // CATEGORY_LIST[0] is 'allretailers' with slug 'all-retailers'
@@ -241,7 +242,7 @@ export default function AppHeader() {
             >
               <Ionicons name="trophy-outline" size={18} color="#FDE047" />
               <Text style={{ fontSize: 12, color: '#ffffff', fontWeight: '600' }}>
-                {isPlusSubscriber ? 'Plus' : 'Upgrade'}
+                {isPremium ? 'Plus' : 'Upgrade'}
               </Text>
             </LinearGradient>
           </TouchableOpacity>

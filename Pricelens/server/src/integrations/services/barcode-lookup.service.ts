@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sortStoresByPriority } from './store-priority';
 
 /**
  * Barcode Lookup API (barcodelookup.com) – no Google.
  * Returns product info + retail pricing by UPC/EAN/ISBN.
+ * Popular US stores are sorted to the top.
  * Set BARCODE_LOOKUP_API_KEY in .env to enable.
  */
 
@@ -53,7 +55,8 @@ export class BarcodeLookupService {
         return [];
       }
       const data = await res.json();
-      return this.mapResponseToStorePrices(data, clean);
+      const prices = this.mapResponseToStorePrices(data, clean);
+      return sortStoresByPriority(prices);
     } catch (e: any) {
       this.logger.warn(`Barcode Lookup error for ${clean}: ${e?.message}`);
       return [];

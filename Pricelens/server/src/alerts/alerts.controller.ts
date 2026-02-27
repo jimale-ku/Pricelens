@@ -20,10 +20,13 @@ import { AlertsService } from './alerts.service';
 import { CreateAlertDto } from './dto/create-alert.dto';
 import { UpdateAlertDto } from './dto/update-alert.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionGuard } from '../subscriptions/guards/subscription.guard';
+import { RequireSubscription } from '../subscriptions/decorators/require-subscription.decorator';
 
 @ApiTags('alerts')
 @Controller('alerts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SubscriptionGuard)
+@RequireSubscription('BASIC')
 @ApiBearerAuth('JWT-auth')
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}

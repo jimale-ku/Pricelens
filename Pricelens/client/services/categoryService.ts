@@ -7,8 +7,12 @@
  * 3. Handle caching and error states
  */
 
-import { API_ENDPOINTS } from '@/constants/api';
+import { API_ENDPOINTS, API_BASE_URL } from '@/constants/api';
 import { transformProducts, transformCompareResponse } from '@/utils/apiTransform';
+
+const isRender = API_BASE_URL.includes('onrender.com');
+const REQUEST_TIMEOUT = isRender ? 55000 : 5000;  // Render cold start ~30–60s
+const SHORT_TIMEOUT = isRender ? 55000 : 3000;
 
 export interface CategoryStores {
   id: string;
@@ -31,7 +35,7 @@ export async function fetchCategoryStores(categorySlug: string): Promise<Categor
   try {
     // Add timeout to prevent hanging
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
     try {
       // Option 1: Get stores from category endpoint (if backend supports it)
@@ -50,7 +54,7 @@ export async function fetchCategoryStores(categorySlug: string): Promise<Categor
       // Option 2: Get all stores and filter by category
       // For now, get all enabled stores from backend
       const storesController = new AbortController();
-      const storesTimeoutId = setTimeout(() => storesController.abort(), 3000);
+      const storesTimeoutId = setTimeout(() => storesController.abort(), SHORT_TIMEOUT);
       
       const storesResponse = await fetch(API_ENDPOINTS.stores.all, {
         signal: storesController.signal,
@@ -231,7 +235,7 @@ export async function fetchSubcategoryCounts(
 ): Promise<Record<string, number>> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout (reduced for faster failure)
+    const timeoutId = setTimeout(() => controller.abort(), SHORT_TIMEOUT);
 
     const response = await fetch(
       `${API_ENDPOINTS.categories.base}/slug/${categorySlug}/subcategory-counts`,

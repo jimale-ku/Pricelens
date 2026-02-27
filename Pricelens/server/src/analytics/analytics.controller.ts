@@ -13,7 +13,7 @@ export class AnalyticsController {
    */
   @Post('event')
   async trackEvent(@Body() body: {
-    eventType: 'category_view' | 'category_search' | 'product_search' | 'service_search' | 'product_view';
+    eventType?: 'category_view' | 'category_search' | 'product_search' | 'service_search' | 'product_view';
     categorySlug?: string;
     categoryName?: string;
     productId?: string;
@@ -23,6 +23,10 @@ export class AnalyticsController {
     searchQuery?: string;
     metadata?: Record<string, any>;
   }) {
+    if (!body || typeof body !== 'object' || !body.eventType) {
+      this.logger.warn('Analytics event rejected: missing or invalid body.eventType');
+      return { success: false, error: 'eventType is required' };
+    }
     await this.analyticsService.trackEvent(body);
     return { success: true };
   }

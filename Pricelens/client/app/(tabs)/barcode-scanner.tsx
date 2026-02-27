@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Modal,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,11 +23,13 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import AppHeader from '@/components/AppHeader';
 import { API_ENDPOINTS } from '@/constants/api';
 import { useRouter } from 'expo-router';
+import { useSubscription } from '@/hooks/useSubscription';
 
 const { width, height } = Dimensions.get('window');
 
 export default function BarcodeScannerScreen() {
   const router = useRouter();
+  const { isPremium, loading: subLoading } = useSubscription();
   const [barcode, setBarcode] = useState('');
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -125,6 +128,38 @@ export default function BarcodeScannerScreen() {
     setShowCamera(false);
     setScanning(false);
   };
+
+  if (subLoading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#06B6D4" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!isPremium) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+          <AppHeader />
+          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(6, 182, 212, 0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+              <Ionicons name="lock-closed" size={36} color="#06B6D4" />
+            </View>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: '#FFFFFF', marginBottom: 8, textAlign: 'center' }}>PriceLens Plus Required</Text>
+            <Text style={{ fontSize: 15, color: '#94A3B8', textAlign: 'center', marginBottom: 28 }}>Barcode Scanner is a premium feature. Upgrade to scan and compare prices across stores.</Text>
+            <TouchableOpacity
+              onPress={() => router.replace('/(tabs)/plus')}
+              activeOpacity={0.85}
+              style={{ backgroundColor: '#06B6D4', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12 }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Upgrade to Plus</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>

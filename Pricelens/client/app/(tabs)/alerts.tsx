@@ -21,6 +21,7 @@ import AppHeader from '@/components/AppHeader';
 import { API_ENDPOINTS } from '@/constants/api';
 import { useRouter } from 'expo-router';
 import { authenticatedFetch, getAccessToken } from '@/utils/auth';
+import { useSubscription } from '@/hooks/useSubscription';
 
 type PriceAlert = {
   id: string;
@@ -44,8 +45,20 @@ type PriceAlert = {
   priceReached?: boolean;
 };
 
+function showPremiumRequiredAlert(router: ReturnType<typeof useRouter>) {
+  Alert.alert(
+    'PriceLens Plus Required',
+    'Price Drop Alerts are a premium feature. Upgrade to Plus to create and manage alerts.',
+    [
+      { text: 'Not Now', style: 'cancel' },
+      { text: 'Upgrade', onPress: () => router.replace('/(tabs)/plus') },
+    ]
+  );
+}
+
 export default function AlertsScreen() {
   const router = useRouter();
+  const { isPremium, loading: subLoading } = useSubscription();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,7 +67,7 @@ export default function AlertsScreen() {
   const [createTargetPrice, setCreateTargetPrice] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Check authentication on mount
+  // Check authentication and premium on mount
   useEffect(() => {
     const checkAuth = async () => {
       const token = await getAccessToken();
@@ -76,6 +89,12 @@ export default function AlertsScreen() {
         if (res.status === 401) {
           Alert.alert('Login Required', 'Please log in to view your price alerts.');
           router.replace('/(auth)/login');
+        } else if (res.status === 403) {
+          const err = await res.json().catch(() => ({}));
+          const msg = err?.message || '';
+          if (msg.toLowerCase().includes('subscription') || msg.toLowerCase().includes('upgrade')) {
+            showPremiumRequiredAlert(router);
+          }
         } else {
           const errorData = await res.json().catch(() => ({}));
           console.error('Failed to fetch alerts:', errorData);
@@ -122,6 +141,8 @@ export default function AlertsScreen() {
         setCreateProductId('');
         setCreateTargetPrice('');
         fetchAlerts();
+      } else if (res.status === 403) {
+        showPremiumRequiredAlert(router);
       } else {
         Alert.alert('Error', data?.message || 'Failed to create alert. Make sure the product exists.');
       }
@@ -149,6 +170,8 @@ export default function AlertsScreen() {
               if (res.ok) {
                 Alert.alert('Success', 'Alert deleted successfully.');
                 fetchAlerts();
+              } else if (res.status === 403) {
+                showPremiumRequiredAlert(router);
               } else {
                 Alert.alert('Error', 'Failed to delete alert.');
               }
@@ -183,6 +206,8 @@ export default function AlertsScreen() {
               if (res.ok) {
                 Alert.alert('Success', 'Alert updated successfully.');
                 fetchAlerts();
+              } else if (res.status === 403) {
+                showPremiumRequiredAlert(router);
               } else {
                 Alert.alert('Error', 'Failed to update alert.');
               }
@@ -197,10 +222,35 @@ export default function AlertsScreen() {
     );
   };
 
-  if (loading) {
+  if (loading || subLoading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020', justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#A855F7" />
+      </SafeAreaView>
+    );
+  }
+
+  // Block non-premium users: show upgrade gate
+  if (!isPremium) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1020' }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+          <AppHeader />
+          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(168, 85, 247, 0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+              <Ionicons name="lock-closed" size={36} color="#A855F7" />
+            </View>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: '#FFFFFF', marginBottom: 8, textAlign: 'center' }}>PriceLens Plus Required</Text>
+            <Text style={{ fontSize: 15, color: '#94A3B8', textAlign: 'center', marginBottom: 28 }}>Price Drop Alerts are a premium feature. Upgrade to create and manage alerts.</Text>
+            <TouchableOpacity
+              onPress={() => router.replace('/(tabs)/plus')}
+              activeOpacity={0.85}
+              style={{ backgroundColor: '#A855F7', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 12 }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Upgrade to Plus</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }

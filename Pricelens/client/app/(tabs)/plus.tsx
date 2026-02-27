@@ -1,7 +1,7 @@
 /**
  * PriceLens Plus - Upgrade page & Plus Member dashboard
  * VIEW 1: Non-subscriber (hero, pricing, 8 features, testimonial, guarantee)
- * VIEW 2: Plus subscriber (badge, cashback, coupon finder, scanners)
+ * VIEW 2: Plus subscriber (badge, cashback, scanners, receipt, alerts)
  */
 
 import {
@@ -23,6 +23,7 @@ import { useRouter } from 'expo-router';
 import { AppState } from 'react-native';
 import AppHeader from '@/components/AppHeader';
 import { API_ENDPOINTS } from '@/constants/api';
+import { useSubscription } from '@/hooks/useSubscription';
 
 type ReceiptLineItem = { name: string; quantity: number; unitPrice: number; totalPrice: number; category?: string };
 type ReceiptAnalysisResult = {
@@ -43,13 +44,6 @@ type SubscriptionPlan = {
   stripePriceId?: string | null;
 };
 
-// Mock coupon data for Plus dashboard
-const MOCK_COUPONS = [
-  { id: '1', store: 'Walmart', category: 'Grocery', discount: '15%', code: 'SAVE15', desc: '15% off your first online order', exp: 'Dec 31, 2025', min: '$50' },
-  { id: '2', store: 'Target', category: 'Household', discount: '$5', code: 'TARGET5', desc: '$5 off $25 household essentials', exp: 'Jan 15, 2026', min: '$25' },
-  { id: '3', store: 'Amazon', category: 'Electronics', discount: '10%', code: 'TECH10', desc: '10% off select electronics', exp: 'Feb 28, 2026', min: '$100' },
-];
-
 const RETAILERS = [
   { name: 'Amazon', emoji: '📦', rate: '5%' },
   { name: 'Walmart', emoji: '🛒', rate: '3%' },
@@ -62,7 +56,6 @@ const RETAILERS = [
 ];
 
 const PREMIUM_FEATURES = [
-  { icon: 'pricetag', title: 'Coupon Finder', desc: 'Access thousands of grocery coupons', colors: ['#A855F7', '#7C3AED'] },
   { icon: 'cash', title: 'Cashback Rewards', desc: 'Earn up to 5% cashback', colors: ['#10B981', '#059669'] },
   { icon: 'barcode', title: 'In-Store Price Scanner', desc: 'Scan barcodes while shopping', colors: ['#06B6D4', '#0891B2'] },
   { icon: 'camera', title: 'Camera Product Scanner', desc: 'Take photos to find prices', colors: ['#14B8A6', '#0D9488'] },
@@ -74,36 +67,13 @@ const PREMIUM_FEATURES = [
 
 export default function PlusScreen() {
   const router = useRouter();
-  const [isPlusMember, setIsPlusMember] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [couponSearch, setCouponSearch] = useState('');
-  const [onlineSearch, setOnlineSearch] = useState('');
-  const [storeFilter, setStoreFilter] = useState('All Stores');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [onlineSearching, setOnlineSearching] = useState(false);
-  const [onlineResults, setOnlineResults] = useState<typeof MOCK_COUPONS>([]);
+  const { isPremium: isPlusMember, loading, refetch: refetchSubscription } = useSubscription();
   const [plusPlan, setPlusPlan] = useState<SubscriptionPlan | null>(null);
   const [stripeTestMode, setStripeTestMode] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptResult, setReceiptResult] = useState<ReceiptAnalysisResult | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
-
-  const fetchSubscription = useCallback(async () => {
-    try {
-      const res = await fetch(API_ENDPOINTS.subscriptions.me, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        const status = data?.status ?? data?.subscription?.status ?? '';
-        setIsPlusMember(!!(status === 'ACTIVE' || status === 'active' || status === 'TRIALING' || status === 'trialing'));
-      }
-    } catch {
-      // Default to non-subscriber when API unavailable
-      setIsPlusMember(false);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -131,10 +101,9 @@ export default function PlusScreen() {
   }, []);
 
   useEffect(() => {
-    fetchSubscription();
     fetchPlans();
     fetchStripeConfig();
-  }, [fetchSubscription, fetchPlans, fetchStripeConfig]);
+  }, [fetchPlans, fetchStripeConfig]);
 
   const checkoutSessionIdRef = useRef<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -159,7 +128,7 @@ export default function PlusScreen() {
             Alert.alert(
               '🎉 Success!',
               'Your subscription is now active. Premium features are unlocked!',
-              [{ text: 'OK', onPress: () => fetchSubscription() }]
+              [{ text: 'OK', onPress: () => refetchSubscription() }]
             );
           }
         }
@@ -191,13 +160,13 @@ export default function PlusScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active' && checkoutSessionIdRef.current) {
         // User returned to app - check subscription status
-        fetchSubscription();
+        refetchSubscription();
         startPollingSubscription();
       }
     });
 
     return () => subscription.remove();
-  }, [fetchSubscription, startPollingSubscription]);
+  }, [refetchSubscription, startPollingSubscription]);
 
   const handleUpgrade = async () => {
     if (!plusPlan?.id) {
@@ -240,20 +209,6 @@ export default function PlusScreen() {
     } finally {
       setCheckoutLoading(false);
     }
-  };
-
-  const handleCopyCode = (id: string, code: string) => {
-    setCopiedId(id);
-    // In a real app: Clipboard.setString(code);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleOnlineSearch = () => {
-    setOnlineSearching(true);
-    setTimeout(() => {
-      setOnlineResults(MOCK_COUPONS.filter(c => c.store.toLowerCase().includes(onlineSearch.toLowerCase()) || c.code.toLowerCase().includes(onlineSearch.toLowerCase())));
-      setOnlineSearching(false);
-    }, 800);
   };
 
   const sendReceiptToAnalyze = async (formData: FormData) => {
@@ -643,7 +598,7 @@ export default function PlusScreen() {
                 ))}
               </View>
               <Text style={{ fontSize: 13, color: '#E2E8F0', lineHeight: 20, marginBottom: 8, fontStyle: 'italic' }}>
-                "PriceLens Plus has completely transformed how I shop. The coupon finder alone has saved me over $200!"
+                "PriceLens Plus has completely transformed how I shop. I've saved over $200 since upgrading!"
               </Text>
               <Text style={{ fontSize: 12, color: '#94A3B8' }}>— Sarah M., Plus Member</Text>
             </View>
@@ -775,171 +730,6 @@ export default function PlusScreen() {
                 • No expiration on earned cashback.
               </Text>
             </View>
-
-            {/* Section 3: Coupon Finder */}
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 }}>Coupon Finder</Text>
-            <TextInput
-              value={couponSearch}
-              onChangeText={setCouponSearch}
-              placeholder="Search coupons..."
-              placeholderTextColor="#64748B"
-              style={{
-                backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                borderRadius: 10,
-                padding: 14,
-                color: '#FFFFFF',
-                fontSize: 15,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: 'rgba(168, 85, 247, 0.3)',
-              }}
-            />
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {['Available Coupons', 'Partner Stores', 'Avg. Savings', 'Daily Updates'].map((label, i) => (
-                <View
-                  key={i}
-                  style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderWidth: 1,
-                    borderColor: 'rgba(168, 85, 247, 0.3)',
-                  }}
-                >
-                  <Text style={{ fontSize: 11, color: '#94A3B8' }}>{label}</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
-                    {label.includes('Coupons') ? '24' : label.includes('Stores') ? '11' : label.includes('Savings') ? '$50+' : 'New'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            {MOCK_COUPONS.map((c) => (
-              <View
-                key={c.id}
-                style={{
-                  backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                  borderRadius: 12,
-                  padding: 16,
-                  marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(148, 163, 184, 0.1)',
-                }}
-              >
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  <View style={{ backgroundColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ fontSize: 11, color: '#A78BFA', fontWeight: '600' }}>{c.store}</Text>
-                  </View>
-                  <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ fontSize: 11, color: '#34D399', fontWeight: '600' }}>{c.category}</Text>
-                  </View>
-                  <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '600' }}>{c.discount}</Text>
-                  </View>
-                </View>
-                <Text style={{ fontSize: 14, color: '#E2E8F0', marginBottom: 6 }}>{c.desc}</Text>
-                <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 10 }}>Exp {c.exp} • Min {c.min}</Text>
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: 'rgba(168, 85, 247, 0.2)',
-                  borderRadius: 8,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(168, 85, 247, 0.4)',
-                }}>
-                  <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: '#E2E8F0', letterSpacing: 2 }}>{c.code}</Text>
-                  <TouchableOpacity
-                    onPress={() => handleCopyCode(c.id, c.code)}
-                    style={{
-                      backgroundColor: copiedId === c.id ? '#10B981' : 'rgba(168, 85, 247, 0.5)',
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
-                      {copiedId === c.id ? 'Copied!' : 'Copy'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              padding: 12,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: 'rgba(168, 85, 247, 0.3)',
-              marginBottom: 24,
-            }}>
-              <Ionicons name="sparkles" size={20} color="#A855F7" />
-              <Text style={{ fontSize: 13, color: '#94A3B8', flex: 1 }}>Pro tip: Stack coupons with store promotions for maximum savings.</Text>
-            </View>
-
-            {/* Section 4: Online Coupon Search */}
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 }}>Online Coupon Search</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-              <TextInput
-                value={onlineSearch}
-                onChangeText={setOnlineSearch}
-                placeholder="Search for store or brand (e.g., Walmart, Nike...)"
-                placeholderTextColor="#64748B"
-                style={{
-                  flex: 1,
-                  backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                  borderRadius: 10,
-                  padding: 14,
-                  color: '#FFFFFF',
-                  fontSize: 14,
-                  borderWidth: 1,
-                  borderColor: 'rgba(99, 102, 241, 0.3)',
-                }}
-              />
-              <TouchableOpacity
-                onPress={handleOnlineSearch}
-                disabled={onlineSearching}
-                style={{ justifyContent: 'center' }}
-              >
-                <LinearGradient
-                  colors={['#6366F1', '#4F46E5']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={{ paddingVertical: 14, paddingHorizontal: 16, borderRadius: 10 }}
-                >
-                  {onlineSearching ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600' }}>Search</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 12 }}>
-              We scan multiple coupon sites for the best codes.
-            </Text>
-            {onlineResults.length > 0 && (
-              <View style={{ marginBottom: 16 }}>
-                {onlineResults.map((c) => (
-                  <View key={c.id} style={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-                    borderRadius: 10,
-                    padding: 14,
-                    marginBottom: 8,
-                    borderWidth: 1,
-                    borderColor: 'rgba(148, 163, 184, 0.1)',
-                  }}>
-                    <Text style={{ fontSize: 14, color: '#E2E8F0', fontWeight: '600' }}>{c.store} — {c.code}</Text>
-                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>{c.desc}</Text>
-                  </View>
-                ))}
-                <TouchableOpacity onPress={() => setOnlineResults([])}>
-                  <Text style={{ color: '#6366F1', fontSize: 14, fontWeight: '500' }}>Clear Results</Text>
-                </TouchableOpacity>
-              </View>
-            )}
 
             {/* Price Drop Alerts */}
             <View

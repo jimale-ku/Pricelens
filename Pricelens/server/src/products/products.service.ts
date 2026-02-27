@@ -3384,7 +3384,37 @@ export class ProductsService {
           return this.formatMultiStoreResponse(syntheticProduct, result.source);
         }
       }
-      
+
+      // Accurate prices: try PricesAPI by product name (same product → real store offers, 50+ stores)
+      if (this.multiStorePriceService?.isEnabled()) {
+        const productNameForSearch = dbProduct.name || cleanQuery;
+        const multiResult = await this.multiStorePriceService.searchMultiStorePrices(productNameForSearch, {
+          country: 'us',
+          limit: 100,
+        });
+        if (multiResult?.prices?.length > 0) {
+          console.log(`✅ [PricesAPI] ${multiResult.prices.length} stores for "${productNameForSearch}" (product-name search)`);
+          const syntheticProduct = {
+            id: dbProduct.id,
+            name: multiResult.productName ?? dbProduct.name,
+            description: dbProduct.description,
+            images: multiResult.productImage ? [multiResult.productImage] : (dbProduct.images ?? []),
+            image: multiResult.productImage ?? dbProduct.images?.[0],
+            barcode: dbProduct.barcode,
+            category: dbProduct.category,
+            prices: multiResult.prices.map((p: any) => ({
+              price: p.price,
+              currency: p.currency || 'USD',
+              inStock: p.inStock !== false,
+              shippingCost: 0,
+              productUrl: p.url,
+              store: { id: null, name: p.store, websiteUrl: p.url || '', logo: null },
+            })),
+          };
+          return this.formatMultiStoreResponse(syntheticProduct, 'pricesapi-search');
+        }
+      }
+
       // ALWAYS fetch fresh prices - user expects 20+ stores, not just what's in database
       console.log(`🔄 Fetching fresh prices from SerpAPI for "${dbProduct.name}" (database has ${storeCount} stores, user expects 20+)...`);
       console.log(`   Current stores in DB: ${dbProduct.prices.map((p: any) => p.store?.name || 'Unknown').join(', ')}`);
@@ -4019,7 +4049,36 @@ export class ProductsService {
       }
     }
 
-    // Step 3: Always use SerpAPI directly (client paid for SerpAPI, not PriceAPI)
+    // Step 2c: Try PricesAPI by product name (accurate multi-store, 50+ stores) before Serper
+    if (!isBarcode && this.multiStorePriceService?.isEnabled()) {
+      const multiResult = await this.multiStorePriceService.searchMultiStorePrices(cleanQuery, {
+        country: 'us',
+        limit: 100,
+      });
+      if (multiResult?.prices?.length > 0) {
+        console.log(`✅ [PricesAPI] ${multiResult.prices.length} stores for "${cleanQuery}" (search)`);
+        const syntheticProduct = {
+          id: `pricesapi-${Date.now()}`,
+          name: multiResult.productName ?? cleanQuery,
+          description: null,
+          images: multiResult.productImage ? [multiResult.productImage] : [],
+          image: multiResult.productImage ?? null,
+          barcode: multiResult.barcode ?? null,
+          category: null,
+          prices: multiResult.prices.map((p: any) => ({
+            price: p.price,
+            currency: p.currency || 'USD',
+            inStock: p.inStock !== false,
+            shippingCost: 0,
+            productUrl: p.url,
+            store: { id: null, name: p.store, websiteUrl: p.url || '', logo: null },
+          })),
+        };
+        return this.formatMultiStoreResponse(syntheticProduct, 'pricesapi-search');
+      }
+    }
+
+    // Step 3: Fallback to SerpAPI when PricesAPI/Barcode Lookup have no results
     // SerpAPI returns 20+ stores from well-known USA retailers (Walmart, Target, Amazon, etc.)
     if ((priceApiFailed || !priceApiResults || priceApiResults.length === 0) && this.multiStoreScrapingService) {
       console.log(`🚀 Using SerpAPI directly for "${cleanQuery}" (PriceAPI disabled - client paid for SerpAPI)...`);
@@ -5568,19 +5627,28 @@ export class ProductsService {
       // Get store name from either storeName or store.name
       const storeNameA = (a.storeName || a.store?.name || '').toLowerCase().trim();
       const storeNameB = (b.storeName || b.store?.name || '').toLowerCase().trim();
-      
-      // First, sort by priority (well-known stores first)
+
+      // Priority index in the client's preferred list (0..N-1), or 999 if not in list
       const priorityA = this.getStorePriority(storeNameA);
       const priorityB = this.getStorePriority(storeNameB);
-      
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB; // Lower priority number = higher priority
-      }
-      
-      // If same priority, sort by price (lowest first)
+      const isPriorityA = priorityA < 999;
+      const isPriorityB = priorityB < 999;
+
       const priceA = typeof a.price === 'number' ? a.price : parseFloat(String(a.price)) || 0;
       const priceB = typeof b.price === 'number' ? b.price : parseFloat(String(b.price)) || 0;
-      return priceA - priceB;
+
+      // 1) All priority stores (your top 30 list) come first, sorted by LOWEST PRICE.
+      if (isPriorityA && !isPriorityB) return -1;
+      if (!isPriorityA && isPriorityB) return 1;
+
+      // 2) Within the same group (both priority or both non-priority), sort by price (cheapest first).
+      if (priceA !== priceB) return priceA - priceB;
+
+      // 3) Tie‑breakers: keep your priority ordering, then alphabetical.
+      const priceA = typeof a.price === 'number' ? a.price : parseFloat(String(a.price)) || 0;
+      const priceB = typeof b.price === 'number' ? b.price : parseFloat(String(b.price)) || 0;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return storeNameA.localeCompare(storeNameB);
     });
   }
 

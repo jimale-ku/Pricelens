@@ -1,15 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sortStoresByPriority } from './store-priority';
 
 /**
  * Multi-Store Price Service
- * 
- * Fetches real prices from multiple retailers:
- * - Walmart, Target, Costco, Best Buy, Amazon, etc.
- * 
- * Uses PricesAPI (pricesapi.io) which supports 100+ retailers
- * Free tier: 1,000 API calls/month
- * Paid: $29/month for 10,000 calls
+ *
+ * Fetches real prices from multiple retailers (50+ stores).
+ * Uses PricesAPI (pricesapi.io): search by barcode → get product id → get offers.
+ * Popular US stores are sorted to the top (Walmart, Amazon, Target, etc.).
+ *
+ * Base URL (docs): https://api.pricesapi.io/api/v1
+ * - GET /products/search?q=...  → product ids
+ * - GET /products/:id/offers?country=us → real-time prices per store
+ *
+ * Free tier: 1,000 requests/month. Auth: x-api-key header.
  */
 
 interface StorePrice {
@@ -33,7 +37,7 @@ export class MultiStorePriceService {
   private readonly logger = new Logger(MultiStorePriceService.name);
   private readonly pricesApiKey: string;
   private readonly pricesApiEnabled: boolean;
-  private readonly baseUrl = 'https://api.pricesapi.io';
+  private readonly baseUrl = 'https://api.pricesapi.io/api/v1';
 
   constructor(private config: ConfigService) {
     this.pricesApiKey = this.config.get('PRICESAPI_KEY', '');
@@ -48,10 +52,16 @@ export class MultiStorePriceService {
     }
   }
 
+  private pricesApiHeaders(): Record<string, string> {
+    return {
+      'x-api-key': this.pricesApiKey,
+      'Content-Type': 'application/json',
+    };
+  }
+
   /**
-   * Search for product prices across multiple stores using PricesAPI
-   * 
-   * PricesAPI supports: Walmart, Target, Costco, Best Buy, Amazon, Home Depot, etc.
+   * Search for product prices: search by query → get first product id → fetch offers.
+   * Prices are sorted with most popular US stores first.
    */
   async searchMultiStorePrices(
     query: string,
@@ -67,71 +77,65 @@ export class MultiStorePriceService {
 
     try {
       const country = options?.country || 'us';
-      const limit = options?.limit || 10;
-      
-      const url = `${this.baseUrl}/v1/search?query=${encodeURIComponent(query)}&country=${country}&limit=${limit}`;
-      
-      this.logger.debug(`🔍 Searching PricesAPI for: "${query}"`);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.pricesApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const limit = Math.min(options?.limit || 10, 100);
+      const searchUrl = `${this.baseUrl}/products/search?q=${encodeURIComponent(query)}&limit=${limit}`;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`❌ PricesAPI request failed (${response.status}): ${errorText}`);
+      this.logger.debug(`🔍 Searching PricesAPI for: "${query}"`);
+      const searchRes = await fetch(searchUrl, { method: 'GET', headers: this.pricesApiHeaders() });
+      if (!searchRes.ok) {
+        const err = await searchRes.text();
+        this.logger.error(`❌ PricesAPI search failed (${searchRes.status}): ${err?.slice(0, 200)}`);
         return null;
       }
 
-      const data = await response.json();
-      
-      // PricesAPI response structure:
-      // {
-      //   "results": [
-      //     {
-      //       "name": "Product Name",
-      //       "image": "https://...",
-      //       "prices": [
-      //         {
-      //           "store": "Walmart",
-      //           "price": 19.99,
-      //           "currency": "USD",
-      //           "url": "https://walmart.com/...",
-      //           "inStock": true
-      //         },
-      //         ...
-      //       ]
-      //     }
-      //   ]
-      // }
-
-      if (!data.results || data.results.length === 0) {
+      const searchData = await searchRes.json();
+      const results = searchData?.data?.results;
+      if (!Array.isArray(results) || results.length === 0) {
         this.logger.warn(`⚠️  No results from PricesAPI for: "${query}"`);
         return null;
       }
 
-      const firstResult = data.results[0];
-      
-      const prices: StorePrice[] = (firstResult.prices || []).map((p: any) => ({
-        store: p.store || 'Unknown Store',
-        price: parseFloat(p.price) || 0,
-        currency: p.currency || 'USD',
-        url: p.url || '',
-        inStock: p.inStock !== false,
-        image: p.image,
-      }));
+      const first = results[0];
+      const productId = first.id;
+      if (productId == null) {
+        this.logger.warn('⚠️  PricesAPI search result has no id');
+        return null;
+      }
 
-      this.logger.log(`✅ Found ${prices.length} store prices for "${query}"`);
+      const offersUrl = `${this.baseUrl}/products/${productId}/offers?country=${country}`;
+      const offersRes = await fetch(offersUrl, { method: 'GET', headers: this.pricesApiHeaders() });
+      if (!offersRes.ok) {
+        const err = await offersRes.text();
+        this.logger.error(`❌ PricesAPI offers failed (${offersRes.status}): ${err?.slice(0, 200)}`);
+        return null;
+      }
+
+      const offersData = await offersRes.json();
+      const payload = offersData?.data ?? offersData;
+      const offers = payload?.offers ?? [];
+      const prices: StorePrice[] = offers
+        .map((o: any) => {
+          const price = typeof o.price === 'number' ? o.price : parseFloat(o.price) || 0;
+          if (price <= 0) return null;
+          return {
+            store: o.seller || o.store || 'Unknown Store',
+            price,
+            currency: o.currency || 'USD',
+            url: o.url || o.seller_url || '',
+            inStock: o.stock != null ? String(o.stock).toLowerCase() !== 'out of stock' : true,
+            image: payload.image ?? o.image,
+          };
+        })
+        .filter((p): p is StorePrice => p != null);
+
+      const sorted = sortStoresByPriority(prices);
+      this.logger.log(`✅ Found ${sorted.length} store prices for "${query}"`);
 
       return {
-        productName: firstResult.name || query,
-        productImage: firstResult.image,
-        barcode: firstResult.barcode,
-        prices: prices.filter(p => p.price > 0), // Filter out invalid prices
+        productName: first.title || first.name || query,
+        productImage: first.image ?? payload?.image,
+        barcode: first.gtin ?? first.barcode,
+        prices: sorted,
       };
     } catch (error: any) {
       this.logger.error(`❌ Error fetching multi-store prices: ${error.message}`, error.stack);
@@ -140,9 +144,9 @@ export class MultiStorePriceService {
   }
 
   /**
-   * Get prices for a specific product by barcode/UPC.
-   * Supports PricesAPI response: { success, data: { title, image, offers: [{ seller, seller_url, price, currency, stock, url }] } }
-   * Returns prices plus productName/productImage when the API provides them.
+   * Get prices by barcode/UPC (accurate product match, not generic search).
+   * Flow: search by barcode → take first product id → get real-time offers.
+   * Popular US stores are sorted to the top.
    */
   async getPricesByBarcode(
     barcode: string,
@@ -151,77 +155,72 @@ export class MultiStorePriceService {
     },
   ): Promise<{ prices: StorePrice[]; productName?: string; productImage?: string }> {
     const empty = { prices: [] as StorePrice[] };
-    if (!this.pricesApiEnabled) {
-      return empty;
-    }
+    if (!this.pricesApiEnabled) return empty;
+
+    const clean = String(barcode).replace(/\D/g, '');
+    if (clean.length < 8 || clean.length > 14) return empty;
 
     try {
       const country = options?.country || 'us';
-      const url = `${this.baseUrl}/v1/barcode/${barcode}?country=${country}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.pricesApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        this.logger.warn(`PricesAPI barcode ${response.status} for ${barcode}: ${err?.slice(0, 200)}`);
+      // Step 1: search by barcode (exact product match)
+      const searchUrl = `${this.baseUrl}/products/search?q=${encodeURIComponent(clean)}&limit=1`;
+      const searchRes = await fetch(searchUrl, { method: 'GET', headers: this.pricesApiHeaders() });
+      if (!searchRes.ok) {
+        const err = await searchRes.text();
+        this.logger.warn(`PricesAPI barcode search ${searchRes.status} for ${clean}: ${err?.slice(0, 150)}`);
         return empty;
       }
 
-      const data = await response.json();
-
-      // New format: { success: true, data: { title, image, offers: [{ seller, seller_url, price, currency, stock, url }] } }
-      const payload = data.data ?? data;
-      const offers = payload?.offers;
-      if (Array.isArray(offers) && offers.length > 0) {
-        const productName = payload?.title ? String(payload.title).trim() : undefined;
-        const productImage =
-          payload?.image && typeof payload.image === 'string' && payload.image.startsWith('http')
-            ? payload.image
-            : undefined;
-        const prices: StorePrice[] = offers
-          .map((o: any) => {
-            const price = typeof o.price === 'number' ? o.price : parseFloat(o.price) || 0;
-            if (price <= 0) return null;
-            const store = o.seller || o.store || 'Unknown Store';
-            const productUrl = o.url || o.seller_url || '';
-            const inStock = o.stock != null ? String(o.stock).toLowerCase() !== 'out of stock' : true;
-            return {
-              store,
-              price,
-              currency: o.currency || 'USD',
-              url: productUrl,
-              inStock,
-              image: payload.image ?? o.image,
-            };
-          })
-          .filter((p): p is StorePrice => p != null);
-        this.logger.log(`✅ PricesAPI barcode: ${prices.length} offers for ${barcode}`);
-        return { prices, productName, productImage };
+      const searchData = await searchRes.json();
+      const results = searchData?.data?.results;
+      if (!Array.isArray(results) || results.length === 0) {
+        this.logger.debug(`PricesAPI: no product found for barcode ${clean}`);
+        return empty;
       }
 
-      // Legacy format: { prices: [{ store, price, currency, url, inStock }] }
-      const legacyPrices = data.prices ?? payload?.prices;
-      if (Array.isArray(legacyPrices) && legacyPrices.length > 0) {
-        const prices = legacyPrices
-          .map((p: any) => ({
-            store: p.store || 'Unknown Store',
-            price: parseFloat(p.price) || 0,
-            currency: p.currency || 'USD',
-            url: p.url || '',
-            inStock: p.inStock !== false,
-            image: p.image,
-          }))
-          .filter((p: StorePrice) => p.price > 0);
-        return { prices };
+      const product = results[0];
+      const productId = product.id;
+      if (productId == null) return empty;
+
+      // Step 2: get offers for this product (real-time scraping, 5–30s)
+      const offersUrl = `${this.baseUrl}/products/${productId}/offers?country=${country}`;
+      const offersRes = await fetch(offersUrl, { method: 'GET', headers: this.pricesApiHeaders() });
+      if (!offersRes.ok) {
+        const err = await offersRes.text();
+        this.logger.warn(`PricesAPI offers ${offersRes.status} for product ${productId}: ${err?.slice(0, 150)}`);
+        return empty;
       }
 
-      return empty;
+      const offersData = await offersRes.json();
+      const payload = offersData?.data ?? offersData;
+      const offers = payload?.offers ?? [];
+      const prices: StorePrice[] = offers
+        .map((o: any) => {
+          const price = typeof o.price === 'number' ? o.price : parseFloat(o.price) || 0;
+          if (price <= 0) return null;
+          return {
+            store: o.seller || o.store || 'Unknown Store',
+            price,
+            currency: o.currency || 'USD',
+            url: o.url || o.seller_url || '',
+            inStock: o.stock != null ? String(o.stock).toLowerCase() !== 'out of stock' : true,
+            image: payload?.image ?? o.image,
+          };
+        })
+        .filter((p): p is StorePrice => p != null);
+
+      const sorted = sortStoresByPriority(prices);
+      this.logger.log(`✅ PricesAPI barcode: ${sorted.length} offers for ${clean}`);
+
+      const img = payload?.image || product?.image;
+      const productImage =
+        img && typeof img === 'string' && img.startsWith('http') ? img : undefined;
+
+      return {
+        prices: sorted,
+        productName: (product.title || product.name) ? String(product.title || product.name).trim() : undefined,
+        productImage,
+      };
     } catch (error: any) {
       this.logger.error(`❌ Error fetching prices by barcode: ${error.message}`);
       return empty;

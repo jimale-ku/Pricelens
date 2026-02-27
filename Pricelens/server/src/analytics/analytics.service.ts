@@ -21,6 +21,10 @@ export class AnalyticsService {
     searchQuery?: string;
     metadata?: Record<string, any>;
   }) {
+    if (!data?.eventType) {
+      this.logger.warn('trackEvent skipped: eventType missing');
+      return;
+    }
     try {
       await this.prisma.analyticsEvent.create({
         data: {

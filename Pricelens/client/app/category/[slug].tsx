@@ -36,6 +36,7 @@ import { SAMPLE_ELECTRONICS_PRODUCTS } from '@/constants/electronicsData';
 import { generateSampleProducts } from '@/utils/generateSampleProducts';
 import { fetchCategoryStores, fetchCategoryProducts, fetchSubcategoryCounts } from '@/services/categoryService';
 import { trackEvent } from '@/utils/analytics';
+import { API_BASE_URL } from '@/constants/api';
 
 // CRITICAL: Validate all imports at module level with DETAILED error messages
 const validateComponent = (component: any, name: string) => {
@@ -283,14 +284,14 @@ function CategoryScreenContent() {
     const controller = new AbortController();
     abortControllersRef.current.add(controller);
     
-    // Use 15s timeout for categories that rely on SerpAPI/backend (groceries, electronics, books, etc.)
-    // so the product fetch has time to complete; avoids endless "Loading products..." when backend is slow
+    // Use longer timeout for Render (cold start can take 30–60s); 15s for slow categories on local backend
+    const isRender = API_BASE_URL.includes('onrender.com');
     const slowCategories = ['books', 'groceries', 'electronics', 'kitchen', 'beauty-products', 'beauty', 'video-games', 'sports-equipment', 'office', 'mattresses', 'pet-supplies', 'household', 'home-accessories', 'furniture', 'clothing', 'footwear'];
-    const maxLoadingTimeoutDuration = slowCategories.includes(slug) ? 15000 : 8000;
+    const maxLoadingTimeoutDuration = isRender ? 60000 : (slowCategories.includes(slug) ? 15000 : 8000);
     const maxLoadingTimeout = setTimeout(() => {
       if (!controller.signal.aborted) {
         setIsLoadingBackend(false);
-        setBackendError('Request timed out. Check that the backend is running and API_BASE_URL in client/constants/api.ts matches your PC IP.');
+        setBackendError(isRender ? 'Server is waking up (Render free tier). Try again in a moment.' : 'Request timed out. Check that the backend is running and API_BASE_URL matches your server.');
       }
     }, maxLoadingTimeoutDuration);
     

@@ -89,10 +89,10 @@ export class MultiStoreScrapingService {
   ];
 
   /**
-   * Only these stores are shown in compare (must have local logo in client assets).
-   * Keep in sync with client/constants/storeAssets.ts ALLOWED_STORE_NAMES.
+   * No longer used: we show ALL USA stores (100+) from Serper/SerpAPI.
+   * Logos come from Clearbit by domain (backend getStoreLogoUrlForSave). Kept for reference.
    */
-  private readonly ALLOWED_STORES = new Set([
+  private readonly ALLOWED_STORES_LEGACY = new Set([
     'Amazon', 'Walmart', 'Target', 'Best Buy', 'Costco', 'eBay', 'Newegg',
     'B&H Photo', 'Adorama', 'Ant Online', 'Woot', 'Back Market', 'Lenovo',
     'Dell', 'HP', 'Micro Center', 'GameStop', 'QVC', 'HSN', 'Focus Camera', 'Staples',
@@ -141,72 +141,31 @@ export class MultiStoreScrapingService {
     if (name.includes('tom thumb')) return true;
     if (name.includes('lowes foods')) return true;
     if (name.includes('food lion')) return true;
-    // Unknown store: exclude to be safe (USA-only)
-    return false;
+    // Allow any store not clearly international (so we can show 100+ USA stores from Serper)
+    return true;
   }
 
   /**
-   * Get priority score for well-known US stores (lower number = higher priority)
-   * Well-known stores should appear first, then sorted by price within each priority group
+   * Client-approved priority order for price comparison. These stores show FIRST when comparing prices.
+   * Lower index = higher priority (shown first). Other stores appear after, sorted by price.
+   */
+  private readonly PRIORITY_STORES = [
+    'amazon', 'walmart', 'ebay', 'target', 'costco', 'home depot', 'best buy', 'kroger', 'cvs', 'walgreens',
+    "lowes", "albertsons", "publix", "aldi", "dollar general", "dollar tree", "macy's", "nordstrom", "kohl's",
+    "tj maxx", "whole foods", "trader joe's", "sam's club", "bj's wholesale club", "ace hardware",
+    "staples", "office depot", "dick's sporting goods", "ulta beauty", "sephora",
+  ];
+
+  /**
+   * Get priority score for price comparison (lower = show first). Uses client's priority store list.
    */
   private getStorePriority(storeName: string): number {
-    const name = storeName.toLowerCase().trim();
-    
-    // Tier 1: Top-tier US retailers (highest priority - 0-9)
-    if (name.includes('amazon')) return 1;
-    if (name.includes('walmart')) return 2;
-    if (name.includes('target')) return 3;
-    if (name.includes('best buy') || name.includes('bestbuy')) return 4;
-    if (name.includes('costco')) return 5;
-    if (name.includes('home depot') || name.includes('homedepot')) return 6;
-    if (name.includes('lowes')) return 7;
-    if (name.includes('kroger')) return 8;
-    if (name.includes('safeway')) return 9;
-    
-    // Tier 2: Major US retailers (10-19)
-    if (name.includes('ebay')) return 10;
-    if (name.includes('macys') || name.includes("macy's")) return 11;
-    if (name.includes('nordstrom')) return 12;
-    if (name.includes('jcpenney') || name.includes("j.c. penney")) return 13;
-    if (name.includes('kohl')) return 14;
-    if (name.includes('bed bath') || name.includes('bedbath')) return 15;
-    if (name.includes('wayfair')) return 16;
-    if (name.includes('overstock')) return 17;
-    if (name.includes('newegg')) return 18;
-    if (name.includes('micro center') || name.includes('microcenter')) return 19;
-    if (name.includes('b&h') || name.includes('bhphoto') || name.includes('bh photo')) return 20;
-    if (name.includes('adorama')) return 21;
-    if (name.includes('dell') && !name.includes('outlet')) return 22;
-    if (name.includes('lenovo')) return 23;
-    if (name.includes('hp.com') || (name.includes('hp ') && name.includes('store'))) return 24;
-    
-    // Tier 3: Other well-known US stores (25-39)
-    if (name.includes('office depot') || name.includes('officedepot')) return 25;
-    if (name.includes('staples')) return 26;
-    if (name.includes('officemax')) return 27;
-    if (name.includes('petco')) return 28;
-    if (name.includes('petsmart')) return 29;
-    if (name.includes('dicks') || name.includes("dick's")) return 30;
-    if (name.includes('rei')) return 31;
-    if (name.includes('bass pro') || name.includes('basspro')) return 32;
-    if (name.includes('cabelas')) return 33;
-    if (name.includes('gamestop')) return 34;
-    if (name.includes('ulta')) return 35;
-    
-    // Tier 4: Regional/Other stores (36-45)
-    if (name.includes('quill')) return 36;
-    if (name.includes('uline')) return 37;
-    if (name.includes('fedex office')) return 38;
-    if (name.includes('container store')) return 39;
-    if (name.includes('publix')) return 40;
-    if (name.includes('wegmans')) return 41;
-    if (name.includes('whole foods') || name.includes('wholefoods')) return 42;
-    if (name.includes('trader joe') || name.includes('traderjoe')) return 43;
-    if (name.includes('aldi')) return 44;
-    if (name.includes('sprouts')) return 45;
-    
-    // Default: Unknown/Other stores (lowest priority - 100+)
-    return 100;
+    const name = storeName.toLowerCase().trim().replace(/'/g, '');
+    for (let i = 0; i < this.PRIORITY_STORES.length; i++) {
+      const p = this.PRIORITY_STORES[i].toLowerCase().replace(/'/g, '');
+      if (name.includes(p) || p.includes(name)) return i;
+    }
+    return 999;
   }
 
   constructor(
@@ -590,6 +549,25 @@ export class MultiStoreScrapingService {
   }
 
   /**
+   * Same-product check: true if result title describes the same product as the canonical title.
+   * Uses word overlap so we don't mix different models or accessories (e.g. iPhone 15 Pro vs case).
+   */
+  private isSameProductAsCanonical(resultTitle: string, canonicalTitle: string): boolean {
+    const stopwords = new Set(['the', 'and', 'for', 'with', 'from', 'for', 'new', 'gen', 'inch', 'gb', 'tb']);
+    const toWords = (t: string) =>
+      t.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 2 && !stopwords.has(w));
+    const canonWords = toWords(canonicalTitle);
+    const resultWords = new Set(toWords(resultTitle));
+    if (canonWords.length === 0) return true;
+    const matchCount = canonWords.filter((w) => resultWords.has(w)).length;
+    const ratio = matchCount / canonWords.length;
+    return ratio >= 0.5;
+  }
+
+  /**
    * Validate if price is realistic for the product
    * Filters out obviously wrong prices (e.g., $28 for iPhone 17 Pro Max)
    */
@@ -869,6 +847,9 @@ export class MultiStoreScrapingService {
       
       this.logger.log(`🔍 Processing ${shoppingResults.length} ${apiLabel} results (max ${maxStores} stores) for product: "${productName}"...`);
       console.log(`🔍 [${apiLabel}] Processing ${shoppingResults.length} results for product: "${productName}"`);
+
+      // CORRECT PRICES: Only show prices for the SAME product (canonical result). Avoid mixing accessories or different models.
+      let canonicalTitle: string | null = null;
 
       for (const result of shoppingResults) {
         // Stop if we've reached the limit
@@ -1233,13 +1214,22 @@ export class MultiStoreScrapingService {
         // Normalize store name and ID
         const { storeName, storeId } = this.normalizeStoreInfo(source, result.source || 'Unknown Store');
 
-        // Only include stores that have local logos (allowlist)
-        if (!this.ALLOWED_STORES.has(storeName)) {
-          this.logger.debug(`   ⏭️ Skipping store not in allowlist: ${storeName}`);
+        // Include any USA store (100+ across USA). Logos from Clearbit by domain in backend.
+        if (!this.isUSAStore(storeName)) {
+          this.logger.debug(`   ⏭️ Skipping non-USA store: ${storeName}`);
+          continue;
+        }
+
+        // CORRECT PRICES: Only include results for the SAME product as the first (canonical) result.
+        // Stops wrong prices from accessories or different models (e.g. iPhone case vs iPhone).
+        if (canonicalTitle !== null && !this.isSameProductAsCanonical(resultTitle, canonicalTitle)) {
+          this.logger.debug(`   ⏭️ Skipping different product: "${result.title}" (canonical: "${canonicalTitle.slice(0, 50)}...")`);
           continue;
         }
 
         this.logger.debug(`   ✅ Including store: ${storeName} at $${price}`);
+
+        if (canonicalTitle === null) canonicalTitle = resultTitle;
 
         storePrices.push({
           storeName,

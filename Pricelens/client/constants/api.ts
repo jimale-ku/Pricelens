@@ -1,4 +1,4 @@
-/**
+ /**
  * API Configuration – FRONTEND ↔ BACKEND LINK
  *
  * If categories show "No products" or keep loading, the app may not be
@@ -18,8 +18,10 @@
 //   Development:  EXPO_PUBLIC_API_URL=http://localhost:3000  (or YOUR_MAC_IP:3000 for physical device)
 //   Production:   EXPO_PUBLIC_API_URL=https://YOUR-RENDER-SERVICE.onrender.com  (no trailing slash)
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
+const RENDER_API_URL = 'https://pricelens-qvvj.onrender.com';
+const fromEnv = typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim();
 export const API_BASE_URL =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL?.trim()) || DEFAULT_API_BASE_URL;
+  (fromEnv && !fromEnv.includes('localhost')) ? fromEnv : (fromEnv || RENDER_API_URL);
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -75,7 +77,7 @@ export const API_ENDPOINTS = {
   // Stores
   stores: {
     all: `${API_BASE_URL}/stores`,
-    request: `${API_BASE_URL}/stores/request`,
+    request: `${API_BASE_URL}/stores/r =equest`,
     nearby: (zipCode: string) => `${API_BASE_URL}/store-locations/nearby?zipCode=${zipCode}`,
   },
   

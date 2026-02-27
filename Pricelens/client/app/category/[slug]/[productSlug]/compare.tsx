@@ -290,9 +290,12 @@ export default function ProductCompareScreen() {
                 }
               }
               
-              // Cache miss - fetch multi-store prices for comprehensive comparison
-              console.log('🔍 Cache miss - Fetching multi-store prices for comprehensive comparison:', actualProductName);
-              const searchUrl = `${API_ENDPOINTS.products.compareMultiStore(actualProductName, 'auto')}&categoryId=${encodeURIComponent(productData.category?.id || '')}`;
+              // Cache miss - fetch multi-store prices. Use barcode when available for accurate prices.
+              const barcodeForCompare = productData.barcode && /^\d{8,14}$/.test(String(productData.barcode).replace(/\D/g, ''));
+              const compareQuery = barcodeForCompare ? String(productData.barcode).replace(/\D/g, '') : actualProductName;
+              const compareSearchType = barcodeForCompare ? 'gtin' : 'auto';
+              console.log('🔍 Cache miss - Fetching multi-store prices:', barcodeForCompare ? `barcode ${compareQuery}` : actualProductName);
+              const searchUrl = `${API_ENDPOINTS.products.compareMultiStore(compareQuery, compareSearchType)}&categoryId=${encodeURIComponent(productData.category?.id || '')}`;
               console.log('🔍 Fetching multi-store prices from:', searchUrl);
               
               try {
@@ -420,13 +423,14 @@ export default function ProductCompareScreen() {
                 return;
               }
             } else {
-                // Product exists but has no prices - fetch multi-store prices using actual product name
+                // Product exists but has no prices - fetch multi-store prices (use barcode if available for accuracy)
                 console.log('⚠️ Product found but no prices, fetching multi-store prices...');
                 const actualProductName = productData.name;
-                console.log('🔍 Using actual product name for multi-store search:', actualProductName);
-                
-                // Use actual product name instead of slug-converted name
-                const searchUrl = `${API_ENDPOINTS.products.compareMultiStore(actualProductName, 'auto')}&categoryId=${encodeURIComponent(productData.category?.id || '')}`;
+                const barcodeForCompare = productData.barcode && /^\d{8,14}$/.test(String(productData.barcode).replace(/\D/g, ''));
+                const compareQuery = barcodeForCompare ? String(productData.barcode).replace(/\D/g, '') : actualProductName;
+                const compareSearchType = barcodeForCompare ? 'gtin' : 'auto';
+                console.log('🔍 Using for multi-store search:', barcodeForCompare ? `barcode ${compareQuery}` : actualProductName);
+                const searchUrl = `${API_ENDPOINTS.products.compareMultiStore(compareQuery, compareSearchType)}&categoryId=${encodeURIComponent(productData.category?.id || '')}`;
                 console.log('🔍 Fetching multi-store prices from:', searchUrl);
                 
                 const multiStoreResponse = await fetch(searchUrl);

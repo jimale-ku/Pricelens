@@ -2124,7 +2124,7 @@ export default function PatternALayout({
                   </Text>
                   <Text style={{ color: '#6b7280', marginTop: 4, fontSize: 12, textAlign: 'center' }}>
                     {backendConnectionError
-                      ? 'Check that the backend is running (npm run start:dev) and that client/constants/api.ts API_BASE_URL matches your PC IP (same Wi‑Fi).'
+                      ? `App is using: ${API_BASE_URL}\n\nIf wrong, republish (eas update). If correct, open that URL in a browser to test.`
                       : 'Try searching or check back later'}
                   </Text>
                 </View>
