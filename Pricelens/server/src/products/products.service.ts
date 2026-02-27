@@ -9,6 +9,7 @@ import { AmazonMockIntegration } from '../integrations/services/amazon-mock.inte
 import { TargetMockIntegration } from '../integrations/services/target-mock.integration';
 import { PriceApiService } from '../integrations/services/priceapi.service';
 import { MultiStorePriceService } from '../integrations/services/multi-store-price.service';
+import { BarcodeLookupService } from '../integrations/services/barcode-lookup.service';
 import { MultiStoreScrapingService } from '../integrations/services/multi-store-scraping.service';
 import { GoogleShoppingScraperService } from '../integrations/services/google-shopping-scraper.service';
 import { StoreLocationsService } from '../store-locations/store-locations.service';
@@ -59,6 +60,7 @@ export class ProductsService {
     private readonly targetIntegration: TargetMockIntegration,
     private readonly priceApiService: PriceApiService,
     private readonly multiStorePriceService: MultiStorePriceService,
+    private readonly barcodeLookupService: BarcodeLookupService,
     private readonly multiStoreScrapingService: MultiStoreScrapingService,
     private readonly googleShoppingScraper: GoogleShoppingScraperService,
     private readonly storeLocationsService: StoreLocationsService,
@@ -2818,6 +2820,11 @@ export class ProductsService {
       return this.orderGroceriesAppleResults(products);
     }
     
+    // Groceries: specificity order = most common (fresh produce) first, then less common (bread, etc.), then niche (shake, smoothie)
+    if (categorySlug === 'groceries') {
+      return this.orderGroceriesBySpecificity(products, lowerQuery);
+    }
+    
     // Apply general brand prioritization for all categories with well-known brands
     // This ensures popular brands show first for any branded items (laptops, phones, TVs, headphones, etc.)
     // Works for both specific categories (electronics, clothing, kitchen) and "all-retailers"
@@ -2832,6 +2839,30 @@ export class ProductsService {
     return products;
   }
   
+  /**
+   * Order groceries by specificity: most common (fresh produce/grocery item) first, then less common, then niche (shake, smoothie, recipe).
+   * So "banana" shows the fruit first, not banana shake.
+   */
+  private orderGroceriesBySpecificity(products: any[], query: string): any[] {
+    const produceWords = ['banana', 'apple', 'orange', 'grape', 'strawberry', 'mango', 'pineapple', 'avocado', 'tomato', 'potato', 'onion', 'lettuce'];
+    const isProduceQuery = produceWords.some((w) => query.includes(w));
+    const typicalBoost = ['fresh', 'organic', 'produce', 'fruit', 'per lb', 'bunch', 'bag of', 'whole ', 'raw '];
+    const nichePenalty = ['shake', 'smoothie', 'smoothie recipe', 'drink recipe', 'milkshake', 'protein shake', 'beverage'];
+    return products.sort((a, b) => {
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+      const score = (name: string) => {
+        let s = 0;
+        if (isProduceQuery) {
+          for (const t of typicalBoost) if (name.includes(t)) s += 2;
+          for (const t of nichePenalty) if (name.includes(t)) s -= 3;
+        }
+        return s;
+      };
+      return score(bName) - score(aName);
+    });
+  }
+
   /**
    * Order groceries "apple" results: classic apple types + major retailers first (not Miami Fruit, etc.)
    */
@@ -3217,8 +3248,8 @@ export class ProductsService {
           'kitchen': ['kitchen', 'cooking', 'appliance'],
         };
         
-        // For generic grocery products, add "whole" or "fresh" to get generic products
-        // This helps get "whole milk" instead of "chocolate milk"
+        // For generic grocery products, add "whole" or "fresh" to get the actual grocery item first (not recipe/drink)
+        // Specificity: most common (fruit, dairy, meat) first; avoid banana shake when user wants banana the fruit
         if (categorySlug === 'groceries') {
           const genericGroceryProducts: Record<string, string> = {
             'milk': 'whole milk',
@@ -3231,10 +3262,36 @@ export class ProductsService {
             'chicken': 'chicken breast',
             'beef': 'ground beef',
           };
-          
+          // Produce: fresh fruit/veg so we get grocery produce, not shake/smoothie/recipe
+          const produceToGrocery: Record<string, string> = {
+            'banana': 'fresh banana',
+            'bananas': 'fresh bananas',
+            'apple': 'fresh apple fruit',
+            'apples': 'fresh apples',
+            'orange': 'fresh orange',
+            'oranges': 'fresh oranges',
+            'grape': 'fresh grapes',
+            'grapes': 'fresh grapes',
+            'strawberry': 'fresh strawberries',
+            'strawberries': 'fresh strawberries',
+            'mango': 'fresh mango',
+            'mangoes': 'fresh mangoes',
+            'pineapple': 'fresh pineapple',
+            'avocado': 'fresh avocado',
+            'tomato': 'fresh tomato',
+            'tomatoes': 'fresh tomatoes',
+            'lettuce': 'fresh lettuce',
+            'onion': 'fresh onion',
+            'onions': 'fresh onions',
+            'potato': 'fresh potato',
+            'potatoes': 'fresh potatoes',
+          };
           if (genericGroceryProducts[lowerQuery]) {
             cleanQuery = genericGroceryProducts[lowerQuery];
             this.devLog(`🔍 Enhanced generic grocery query: "${searchQuery.trim()}" → "${cleanQuery}"`);
+          } else if (produceToGrocery[lowerQuery]) {
+            cleanQuery = produceToGrocery[lowerQuery];
+            this.devLog(`🔍 Produce query (grocery first): "${searchQuery.trim()}" → "${cleanQuery}"`);
           } else if (lowerQuery === 'apple') {
             cleanQuery = 'fresh apple fruit';
           }
@@ -3293,12 +3350,40 @@ export class ProductsService {
       },
     });
 
-    // If found in database, ALWAYS fetch fresh prices from SerpAPI when user clicks "View Price"
-    // This ensures users always see 20+ stores as expected, even if database has fewer stores
-    // The cache check is only for the popular items page, not for the compare page
+    // If found in database, try barcode-based price lookup first (exact product = correct prices)
+    // Then fall back to SerpAPI for fresh multi-store results
     if (dbProduct && dbProduct.prices && dbProduct.prices.length > 0) {
       const uniqueStores = new Set(dbProduct.prices.map((p: any) => p.store?.name || p.storeId));
       const storeCount = uniqueStores.size;
+
+      // CORRECT PRICES: When we have a barcode, try non-Google barcode APIs first (Barcode Lookup, then PricesAPI)
+      const dbBarcode = dbProduct.barcode || (isBarcode ? cleanQuery : null);
+      if (dbBarcode) {
+        const result = await this.getBarcodePricesFromProviders(dbBarcode);
+        if (result.prices.length > 0) {
+          console.log(`✅ [Barcode] ${result.source} returned ${result.prices.length} stores for UPC ${dbBarcode} (exact product prices)`);
+          const productName = result.productName ?? dbProduct.name;
+          const productImage = result.productImage ?? dbProduct.images?.[0] ?? dbProduct.image;
+          const syntheticProduct = {
+            id: dbProduct.id,
+            name: productName,
+            description: dbProduct.description,
+            images: productImage ? [productImage] : (dbProduct.images ?? []),
+            image: productImage ?? dbProduct.images?.[0],
+            barcode: dbBarcode,
+            category: dbProduct.category,
+            prices: result.prices.map((p: any) => ({
+              price: p.price,
+              currency: p.currency || 'USD',
+              inStock: p.inStock !== false,
+              shippingCost: 0,
+              productUrl: p.url,
+              store: { id: null, name: p.store, websiteUrl: p.url || '', logo: null },
+            })),
+          };
+          return this.formatMultiStoreResponse(syntheticProduct, result.source);
+        }
+      }
       
       // ALWAYS fetch fresh prices - user expects 20+ stores, not just what's in database
       console.log(`🔄 Fetching fresh prices from SerpAPI for "${dbProduct.name}" (database has ${storeCount} stores, user expects 20+)...`);
@@ -3318,21 +3403,31 @@ export class ProductsService {
           // Ensure we're searching for the correct product by using the database product name
           // This is critical to prevent prices from different products being mixed up
           
-          // Request 100 stores so we get 50+ after dedupe; known stores sorted first
+          // Request 100 stores so we get as many as possible; primary query = exact product (accuracy)
           let multiStoreResult = await this.multiStoreScrapingService.searchProductWithMultiStorePrices(
             serpApiQuery,
             { limit: 100 }
           );
           
-          // If no result or very few stores (e.g. only Best Buy), retry with shorter query (e.g. "Lenovo laptop") to get 50+ stores
+          // Find more stores: merge with a second query (short/variant). Keep primary query's price when same store (accuracy).
           const shortQuery = (serpApiQuery.length > 20) ? this.buildShortProductQueryForMultiStore(serpApiQuery) : null;
           const count = multiStoreResult ? multiStoreResult.storePrices.length : 0;
-          if (count < 20 && shortQuery && shortQuery !== serpApiQuery) {
-            this.devLog(`🔍 ${count} stores for long query, retrying with: "${shortQuery}"`);
-            const fallbackResult = await this.multiStoreScrapingService.searchProductWithMultiStorePrices(shortQuery, { limit: 100 });
-            if (fallbackResult && fallbackResult.storePrices.length > count) {
-              multiStoreResult = fallbackResult;
-              this.devLog(`✅ Fallback query returned ${multiStoreResult.storePrices.length} stores`);
+          if (count < 50 && shortQuery && shortQuery !== serpApiQuery) {
+            this.devLog(`🔍 ${count} stores from primary query, fetching more with: "${shortQuery}"`);
+            const fallbackResult = await this.multiStoreScrapingService.getAllStorePricesFromSerpAPI(shortQuery, { limit: 100 });
+            if (fallbackResult && fallbackResult.length > 0) {
+              const primaryByStore = new Map<string, any>();
+              (multiStoreResult!.storePrices || []).forEach((p: any) => {
+                const k = (p.storeName || '').toLowerCase().trim();
+                if (k && !primaryByStore.has(k)) primaryByStore.set(k, p);
+              });
+              fallbackResult.forEach((p: any) => {
+                const k = (p.storeName || '').toLowerCase().trim();
+                if (k && !primaryByStore.has(k)) primaryByStore.set(k, p);
+              });
+              const merged = Array.from(primaryByStore.values()).sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+              multiStoreResult = { ...multiStoreResult!, storePrices: merged };
+              this.devLog(`✅ Merged to ${merged.length} stores (primary + extra from variant query)`);
             }
           }
           
@@ -3896,6 +3991,34 @@ export class ProductsService {
       }
     }
 
+    // Step 2b: CORRECT PRICES – When query is a barcode, try non-Google barcode APIs first (Barcode Lookup, then PricesAPI)
+    if (isBarcode && cleanQuery) {
+      const result = await this.getBarcodePricesFromProviders(cleanQuery);
+      if (result.prices.length > 0) {
+        console.log(`✅ [Barcode] ${result.source} returned ${result.prices.length} stores for UPC ${cleanQuery} (exact product prices)`);
+        const productName = result.productName ?? `Product (UPC: ${cleanQuery})`;
+        const productImage = result.productImage ?? result.prices[0]?.image;
+        const syntheticProduct = {
+          id: `barcode-${cleanQuery}`,
+          name: productName,
+          description: null,
+          images: productImage ? [productImage] : [],
+          image: productImage,
+          barcode: cleanQuery,
+          category: null,
+          prices: result.prices.map((p: any) => ({
+            price: p.price,
+            currency: p.currency || 'USD',
+            inStock: p.inStock !== false,
+            shippingCost: 0,
+            productUrl: p.url,
+            store: { id: null, name: p.store, websiteUrl: p.url || '', logo: null },
+          })),
+        };
+        return this.formatMultiStoreResponse(syntheticProduct, result.source);
+      }
+    }
+
     // Step 3: Always use SerpAPI directly (client paid for SerpAPI, not PriceAPI)
     // SerpAPI returns 20+ stores from well-known USA retailers (Walmart, Target, Amazon, etc.)
     if ((priceApiFailed || !priceApiResults || priceApiResults.length === 0) && this.multiStoreScrapingService) {
@@ -3905,11 +4028,25 @@ export class ProductsService {
       }
       try {
         // Use SerpAPI directly (skip PriceAPI which already failed)
-        // getAllStorePricesFromSerpAPI returns prices from all stores via Google Shopping
-        const serpApiStorePrices = await this.multiStoreScrapingService.getAllStorePricesFromSerpAPI(
+        let serpApiStorePrices = await this.multiStoreScrapingService.getAllStorePricesFromSerpAPI(
           cleanQuery,
           { limit: 100, excludeAmazon: false } // Include Amazon since PriceAPI failed
         );
+        
+        // Find more stores: merge with variant query when primary returns few (keep primary for accuracy)
+        if (serpApiStorePrices && serpApiStorePrices.length < 50 && cleanQuery.length > 20) {
+          const shortQuery = this.buildShortProductQueryForMultiStore(cleanQuery);
+          if (shortQuery && shortQuery !== cleanQuery) {
+            const extra = await this.multiStoreScrapingService.getAllStorePricesFromSerpAPI(shortQuery, { limit: 100, excludeAmazon: false });
+            if (extra && extra.length > 0) {
+              const byStore = new Map<string, any>();
+              serpApiStorePrices.forEach((p: any) => { const k = (p.storeName || '').toLowerCase().trim(); if (k) byStore.set(k, p); });
+              extra.forEach((p: any) => { const k = (p.storeName || '').toLowerCase().trim(); if (k && !byStore.has(k)) byStore.set(k, p); });
+              serpApiStorePrices = Array.from(byStore.values()).sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+              console.log(`✅ Merged to ${serpApiStorePrices.length} stores (primary + variant query)`);
+            }
+          }
+        }
         
         if (serpApiStorePrices && serpApiStorePrices.length > 0) {
           console.log(`✅ SerpAPI found ${serpApiStorePrices.length} stores for "${cleanQuery}"`);
@@ -4240,6 +4377,8 @@ export class ProductsService {
         'phone', 'laptop', 'computer', 'tablet', 'tv', 'television',
         // Brand names that are also product names (when they appear as clothing)
         'mango brand', 'mango clothing', 'mango fashion',
+        // Specificity: when user wants the grocery (e.g. banana), don't show drink/recipe first
+        'shake', 'smoothie', 'smoothie recipe', 'drink recipe', 'protein shake', 'milkshake',
       ],
       electronics: ['food', 'fruit', 'vegetable', 'grocery', 'clothing', 'furniture'],
       kitchen: ['clothing', 'electronics', 'furniture'],
@@ -4668,18 +4807,28 @@ export class ProductsService {
       }
     }
     
-    // For groceries, prioritize "fruit" or "fresh" to get produce items
+    // For groceries, prioritize the actual grocery item (most common first): fresh produce, not shake/recipe/drink
     if (categorySlug === 'groceries') {
-      // Check if query is a common fruit/vegetable name
-      const fruitNames = ['mango', 'apple', 'banana', 'orange', 'grape', 'pineapple', 'avocado', 'tomato', 'potato', 'onion'];
-      const isFruitVegetable = fruitNames.some(fv => lowerQuery.includes(fv));
-      
+      const produceSingleWord: Record<string, string> = {
+        banana: 'fresh banana', bananas: 'fresh bananas',
+        apple: 'fresh apple fruit', apples: 'fresh apples',
+        orange: 'fresh orange', oranges: 'fresh oranges',
+        grape: 'fresh grapes', grapes: 'fresh grapes',
+        strawberry: 'fresh strawberries', strawberries: 'fresh strawberries',
+        mango: 'fresh mango', mangoes: 'fresh mangoes',
+        pineapple: 'fresh pineapple', avocado: 'fresh avocado',
+        tomato: 'fresh tomato', tomatoes: 'fresh tomatoes',
+        lettuce: 'fresh lettuce', onion: 'fresh onion', onions: 'fresh onions',
+        potato: 'fresh potato', potatoes: 'fresh potatoes',
+      };
+      const expanded = produceSingleWord[lowerQuery];
+      if (expanded) {
+        return expanded;
+      }
+      const isFruitVegetable = Object.keys(produceSingleWord).some(fv => lowerQuery.includes(fv));
       if (isFruitVegetable) {
-        // Add "fruit" or "fresh" to make it clear we want produce
         return `${query} fruit`;
       }
-      
-      // For other grocery items, add "grocery" or "food"
       return `${query} grocery`;
     }
     
@@ -5363,58 +5512,50 @@ export class ProductsService {
   /**
    * Format product data for multi-store response
    */
-  /**
-   * Get priority score for well-known US stores (lower number = higher priority)
-   * Well-known stores should appear first, then sorted by price within each priority group
-   */
+  /** Client-approved priority order for price comparison. These stores show FIRST. */
+  private readonly PRIORITY_STORES = [
+    'amazon', 'walmart', 'ebay', 'target', 'costco', 'home depot', 'best buy', 'kroger', 'cvs', 'walgreens',
+    "lowes", "albertsons", "publix", "aldi", "dollar general", "dollar tree", "macy's", "nordstrom", "kohl's",
+    "tj maxx", "whole foods", "trader joe's", "sam's club", "bj's wholesale club", "ace hardware",
+    "staples", "office depot", "dick's sporting goods", "ulta beauty", "sephora",
+  ];
+
+  /** Get priority score (lower = show first). Matches client's priority store list. */
   private getStorePriority(storeName: string): number {
-    const name = storeName.toLowerCase().trim();
-    
-    // Tier 1: Top-tier US retailers (highest priority - 0-9)
-    if (name.includes('amazon')) return 1;
-    if (name.includes('walmart')) return 2;
-    if (name.includes('target')) return 3;
-    if (name.includes('best buy') || name.includes('bestbuy')) return 4;
-    if (name.includes('costco')) return 5;
-    if (name.includes('home depot') || name.includes('homedepot')) return 6;
-    if (name.includes('lowes')) return 7;
-    if (name.includes('kroger')) return 8;
-    if (name.includes('safeway')) return 9;
-    
-    // Tier 2: Major US retailers (10-19)
-    if (name.includes('ebay')) return 10;
-    if (name.includes('macys') || name.includes("macy's")) return 11;
-    if (name.includes('nordstrom')) return 12;
-    if (name.includes('jcpenney') || name.includes("j.c. penney")) return 13;
-    if (name.includes('kohl')) return 14;
-    if (name.includes('bed bath') || name.includes('bedbath')) return 15;
-    if (name.includes('wayfair')) return 16;
-    if (name.includes('overstock')) return 17;
-    if (name.includes('newegg')) return 18;
-    if (name.includes('micro center') || name.includes('microcenter')) return 19;
-    
-    // Tier 3: Other well-known US stores (20-29)
-    if (name.includes('office depot') || name.includes('officedepot')) return 20;
-    if (name.includes('staples')) return 21;
-    if (name.includes('petco')) return 22;
-    if (name.includes('petsmart')) return 23;
-    if (name.includes('dicks') || name.includes("dick's")) return 24;
-    if (name.includes('rei')) return 25;
-    if (name.includes('bass pro') || name.includes('basspro')) return 26;
-    if (name.includes('cabelas')) return 27;
-    if (name.includes('gamestop')) return 28;
-    if (name.includes('ulta')) return 29;
-    
-    // Tier 4: Regional/Other stores (30-39)
-    if (name.includes('publix')) return 30;
-    if (name.includes('wegmans')) return 31;
-    if (name.includes('whole foods') || name.includes('wholefoods')) return 32;
-    if (name.includes('trader joe') || name.includes('traderjoe')) return 33;
-    if (name.includes('aldi')) return 34;
-    if (name.includes('sprouts')) return 35;
-    
-    // Default: Unknown/Other stores (lowest priority - 100+)
-    return 100;
+    const name = storeName.toLowerCase().trim().replace(/'/g, '');
+    for (let i = 0; i < this.PRIORITY_STORES.length; i++) {
+      const p = this.PRIORITY_STORES[i].toLowerCase().replace(/'/g, '');
+      if (name.includes(p) || p.includes(name)) return i;
+    }
+    return 999;
+  }
+
+  /**
+   * Try barcode price providers in order (non-Google first): Barcode Lookup, then PricesAPI.
+   * Returns { prices, source, productName?, productImage? } for the first provider that returns at least one price.
+   */
+  private async getBarcodePricesFromProviders(barcode: string): Promise<{
+    prices: Array<{ store: string; price: number; currency: string; url: string; inStock: boolean; image?: string }>;
+    source: string;
+    productName?: string;
+    productImage?: string;
+  }> {
+    if (this.barcodeLookupService?.isEnabled()) {
+      const prices = await this.barcodeLookupService.getPricesByBarcode(barcode, { country: 'us' });
+      if (prices?.length > 0) return { prices, source: 'barcode-lookup' };
+    }
+    if (this.multiStorePriceService?.isEnabled()) {
+      const result = await this.multiStorePriceService.getPricesByBarcode(barcode, { country: 'us' });
+      if (result.prices?.length > 0) {
+        return {
+          prices: result.prices,
+          source: 'pricesapi-barcode',
+          productName: result.productName,
+          productImage: result.productImage,
+        };
+      }
+    }
+    return { prices: [], source: 'none' };
   }
 
   /**

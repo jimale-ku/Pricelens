@@ -140,51 +140,91 @@ export class MultiStorePriceService {
   }
 
   /**
-   * Get prices for a specific product by barcode/UPC
+   * Get prices for a specific product by barcode/UPC.
+   * Supports PricesAPI response: { success, data: { title, image, offers: [{ seller, seller_url, price, currency, stock, url }] } }
+   * Returns prices plus productName/productImage when the API provides them.
    */
   async getPricesByBarcode(
     barcode: string,
     options?: {
       country?: string;
     },
-  ): Promise<StorePrice[]> {
+  ): Promise<{ prices: StorePrice[]; productName?: string; productImage?: string }> {
+    const empty = { prices: [] as StorePrice[] };
     if (!this.pricesApiEnabled) {
-      return [];
+      return empty;
     }
 
     try {
       const country = options?.country || 'us';
       const url = `${this.baseUrl}/v1/barcode/${barcode}?country=${country}`;
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.pricesApiKey}`,
+          Authorization: `Bearer ${this.pricesApiKey}`,
           'Content-Type': 'application/json',
         },
       });
 
       if (!response.ok) {
-        return [];
+        const err = await response.text();
+        this.logger.warn(`PricesAPI barcode ${response.status} for ${barcode}: ${err?.slice(0, 200)}`);
+        return empty;
       }
 
       const data = await response.json();
-      
-      if (!data.prices || data.prices.length === 0) {
-        return [];
+
+      // New format: { success: true, data: { title, image, offers: [{ seller, seller_url, price, currency, stock, url }] } }
+      const payload = data.data ?? data;
+      const offers = payload?.offers;
+      if (Array.isArray(offers) && offers.length > 0) {
+        const productName = payload?.title ? String(payload.title).trim() : undefined;
+        const productImage =
+          payload?.image && typeof payload.image === 'string' && payload.image.startsWith('http')
+            ? payload.image
+            : undefined;
+        const prices: StorePrice[] = offers
+          .map((o: any) => {
+            const price = typeof o.price === 'number' ? o.price : parseFloat(o.price) || 0;
+            if (price <= 0) return null;
+            const store = o.seller || o.store || 'Unknown Store';
+            const productUrl = o.url || o.seller_url || '';
+            const inStock = o.stock != null ? String(o.stock).toLowerCase() !== 'out of stock' : true;
+            return {
+              store,
+              price,
+              currency: o.currency || 'USD',
+              url: productUrl,
+              inStock,
+              image: payload.image ?? o.image,
+            };
+          })
+          .filter((p): p is StorePrice => p != null);
+        this.logger.log(`✅ PricesAPI barcode: ${prices.length} offers for ${barcode}`);
+        return { prices, productName, productImage };
       }
 
-      return data.prices.map((p: any) => ({
-        store: p.store || 'Unknown Store',
-        price: parseFloat(p.price) || 0,
-        currency: p.currency || 'USD',
-        url: p.url || '',
-        inStock: p.inStock !== false,
-        image: p.image,
-      })).filter((p: StorePrice) => p.price > 0);
+      // Legacy format: { prices: [{ store, price, currency, url, inStock }] }
+      const legacyPrices = data.prices ?? payload?.prices;
+      if (Array.isArray(legacyPrices) && legacyPrices.length > 0) {
+        const prices = legacyPrices
+          .map((p: any) => ({
+            store: p.store || 'Unknown Store',
+            price: parseFloat(p.price) || 0,
+            currency: p.currency || 'USD',
+            url: p.url || '',
+            inStock: p.inStock !== false,
+            image: p.image,
+          }))
+          .filter((p: StorePrice) => p.price > 0);
+        return { prices };
+      }
+
+      return empty;
     } catch (error: any) {
       this.logger.error(`❌ Error fetching prices by barcode: ${error.message}`);
-      return [];
+      return empty;
     }
   }
 
