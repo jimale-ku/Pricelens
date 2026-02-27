@@ -6,6 +6,7 @@ import { AmazonMockIntegration } from './services/amazon-mock.integration';
 import { TargetMockIntegration } from './services/target-mock.integration';
 import { PriceApiService } from './services/priceapi.service';
 import { MultiStorePriceService } from './services/multi-store-price.service';
+import { BarcodeLookupService } from './services/barcode-lookup.service';
 import { MultiStoreScrapingService } from './services/multi-store-scraping.service';
 import { SerpAPIMapsService } from './services/serpapi-maps.service';
 import { SerperCacheService } from './services/serper-cache.service';
@@ -39,6 +40,7 @@ import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
     TargetMockIntegration,
     PriceApiService,
     MultiStorePriceService,
+    BarcodeLookupService,
     MultiStoreScrapingService,
     SerpAPIMapsService,
     SerperCacheService,
@@ -58,6 +60,7 @@ import { BestBuyAdapter } from './adapters/bestbuy/bestbuy.adapter';
     TargetMockIntegration,
     PriceApiService,
     MultiStorePriceService,
+    BarcodeLookupService,
     MultiStoreScrapingService,
     SerpAPIMapsService,
     SerperCacheService,
