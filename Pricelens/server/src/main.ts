@@ -97,8 +97,15 @@ async function bootstrap() {
     console.log(`📚 Swagger documentation available at http://localhost:${port}/api`);
     console.log(`🌐 API accessible at http://${currentIP}:${port}`);
     console.log(`💡 Update client/constants/api.ts with IP: ${currentIP}`);
-  } catch (error) {
-    console.error('❌ Error starting Nest application:', error);
+  } catch (error: any) {
+    console.error('❌ Error starting Nest application:', error?.message ?? error);
+    if (error?.stack) console.error(error.stack);
+    // Help Render troubleshooting: show which required env vars are missing
+    const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+    const missing = required.filter((k) => !process.env[k]?.trim());
+    if (missing.length > 0) {
+      console.error('Missing required env vars on this host:', missing.join(', '));
+    }
     process.exit(1);
   }
 }

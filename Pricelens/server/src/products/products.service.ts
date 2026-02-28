@@ -5645,8 +5645,6 @@ export class ProductsService {
       if (priceA !== priceB) return priceA - priceB;
 
       // 3) Tie‑breakers: keep your priority ordering, then alphabetical.
-      const priceA = typeof a.price === 'number' ? a.price : parseFloat(String(a.price)) || 0;
-      const priceB = typeof b.price === 'number' ? b.price : parseFloat(String(b.price)) || 0;
       if (priorityA !== priorityB) return priorityA - priorityB;
       return storeNameA.localeCompare(storeNameB);
     });

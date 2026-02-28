@@ -56,6 +56,24 @@
 
 ---
 
+## 5. Required environment variables (or deploy exits with status 1)
+
+The app **validates env on startup**. If any **required** variable is missing or invalid, the process exits with code 1 and you’ll see “Exited with status 1” on Render.
+
+**Required in Render → Environment:**
+
+| Key | Description |
+|-----|-------------|
+| `DATABASE_URL` | **Internal Database URL** from your Render PostgreSQL (Info → Connections). Must start with `postgresql://`. |
+| `JWT_SECRET` | Any long random string (e.g. `openssl rand -base64 32`). |
+| `JWT_REFRESH_SECRET` | Another long random string. |
+
+**Optional but recommended:** `SERPER_API_KEY`, `PRICESAPI_KEY`, `BARCODE_LOOKUP_API_KEY`, `CORS_ORIGIN`, `FRONTEND_URL`.
+
+**How to see the real error:** In Render dashboard → your Web Service → **Logs**. Scroll to the end of the deploy; look for a line like `❌ Error starting Nest application:` and the line below it (e.g. missing `DATABASE_URL`, invalid `JWT_SECRET`, or Prisma connection error). That tells you exactly which env var or step failed.
+
+---
+
 ## Run backend locally on your MacBook (optional)
 
 - Install PostgreSQL (e.g. `brew install postgresql@15`), start it, create a DB.
